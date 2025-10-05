@@ -55,10 +55,10 @@ async function initFingerprint() {
         const result = await FingerprintJS.get();
         userFingerprint = result.visitorId;
         console.log('🔑 Fingerprint:', userFingerprint);
-        
+
         startRealtimeStatusMonitoring();
         await recordUserActivity();
-        
+
         fingerprintReady = true;
         console.log('✅ Fingerprint готов');
     } catch (error) {
@@ -71,7 +71,7 @@ async function initFingerprint() {
 // ============ МОНИТОРИНГ СТАТУСА ============
 function startRealtimeStatusMonitoring() {
     if (!userFingerprint) return;
-    
+
     const banRef = ref(database, `bans/${userFingerprint}`);
     onValue(banRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -87,7 +87,7 @@ function startRealtimeStatusMonitoring() {
             userStatus.banned = false;
         }
     });
-    
+
     const muteRef = ref(database, `mutes/${userFingerprint}`);
     onValue(muteRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -110,10 +110,10 @@ function showBanAlert(banData) {
 
 async function recordUserActivity() {
     if (!userFingerprint) return;
-    
+
     const username = document.getElementById('username')?.value.trim() || 'Аноним';
     const activityRef = ref(database, `users/${userFingerprint}`);
-    
+
     try {
         await set(activityRef, {
             fingerprint: userFingerprint,
@@ -149,29 +149,29 @@ onValue(onlineRef, (snapshot) => {
     const count = snapshot.numChildren();
     const onlineEl = document.getElementById('online-count');
     if (onlineEl) onlineEl.textContent = count;
-    
+
     const sidebarCount = document.getElementById('online-count-sidebar');
     if (sidebarCount) sidebarCount.textContent = count;
-    
+
     const onlineMobile = document.getElementById('online-count-mobile');
     if (onlineMobile) onlineMobile.textContent = count;
-    
+
     const badgeOnline = document.getElementById('badge-online');
     if (badgeOnline) badgeOnline.textContent = count;
-    
+
     const statOnline = document.getElementById('stat-online');
     if (statOnline) statOnline.textContent = count;
 });
 
 // ============ МОБИЛЬНОЕ МЕНЮ ============
-window.toggleMobileMenu = function() {
+window.toggleMobileMenu = function () {
     const sidebar = document.getElementById('mobile-sidebar');
     const overlay = document.querySelector('.mobile-overlay');
-    
+
     if (sidebar && overlay) {
         sidebar.classList.toggle('show');
         overlay.classList.toggle('show');
-        
+
         // Блокируем скролл body когда меню открыто
         if (sidebar.classList.contains('show')) {
             document.body.style.overflow = 'hidden';
@@ -182,7 +182,7 @@ window.toggleMobileMenu = function() {
 };
 
 // ============ ТЕМНАЯ ТЕМА ============
-window.toggleTheme = function() {
+window.toggleTheme = function () {
     document.body.classList.toggle('dark-theme');
     const icon = document.getElementById('theme-icon');
     if (icon) {
@@ -207,82 +207,82 @@ function updateAdminUI() {
     const admin = isAdmin();
     const adminSidebar = document.getElementById('admin-sidebar');
     const adminSidebarMobile = document.getElementById('admin-sidebar-mobile');
-    
+
     if (adminSidebar) {
         adminSidebar.style.display = admin ? 'block' : 'none';
     }
-    
+
     if (adminSidebarMobile) {
         adminSidebarMobile.style.display = admin ? 'block' : 'none';
     }
-    
+
     if (allPosts.length > 0) {
         sortAndDisplayPosts();
     }
 }
 
 // ============ МОДАЛЬНЫЕ ОКНА ============
-window.openPostModal = function() {
+window.openPostModal = function () {
     const username = document.getElementById('username')?.value.trim();
     if (!username) {
         alert('Введите ваше имя!');
         return;
     }
-    
+
     if (userStatus.banned) {
         alert('❌ Вы забанены и не можете создавать посты!');
         return;
     }
-    
+
     if (userStatus.muted) {
         alert('❌ Вы замучены и не можете создавать посты!');
         return;
     }
-    
+
     document.getElementById('post-modal').classList.add('show');
 };
 
-window.closePostModal = function() {
+window.closePostModal = function () {
     document.getElementById('post-modal').classList.remove('show');
     document.getElementById('post-title').value = '';
     document.getElementById('post-text').value = '';
 };
 
-window.openAdminPanel = function() {
+window.openAdminPanel = function () {
     if (!isAdmin()) {
         alert('❌ У вас нет прав доступа!');
         return;
     }
-    
+
     document.getElementById('admin-modal').classList.add('show');
     switchAdminTab('dashboard');
 };
 
-window.closeAdminPanel = function() {
+window.closeAdminPanel = function () {
     document.getElementById('admin-modal').classList.remove('show');
 };
 
 // ============ СОЗДАНИЕ ПОСТА ============
-window.submitPost = async function() {
+window.submitPost = async function () {
     if (!fingerprintReady) {
         alert('⏳ Загрузка... Попробуйте через секунду');
         return;
     }
-    
+
     const username = document.getElementById('username')?.value.trim();
     const title = document.getElementById('post-title')?.value.trim();
     const text = document.getElementById('post-text')?.value.trim();
-    
+
     if (!username) {
         alert('Введите ваше имя!');
         return;
     }
-    
+
     if (!title) {
         alert('Введите заголовок поста!');
         return;
     }
-    
+
     const newPost = {
         author: username,
         title: title,
@@ -293,7 +293,7 @@ window.submitPost = async function() {
         fingerprint: userFingerprint,
         userAgent: navigator.userAgent.substring(0, 200)
     };
-    
+
     try {
         await push(postsRef, newPost);
         console.log('✅ Пост создан!');
@@ -337,13 +337,13 @@ onValue(postsRef, (snapshot) => {
 function updateStats(postsCount, likesCount) {
     const postsCountEl = document.getElementById('posts-count');
     if (postsCountEl) postsCountEl.textContent = postsCount;
-    
+
     const postsCountMobile = document.getElementById('posts-count-mobile');
     if (postsCountMobile) postsCountMobile.textContent = postsCount;
-    
+
     const statPosts = document.getElementById('stat-posts');
     if (statPosts) statPosts.textContent = postsCount;
-    
+
     const statLikes = document.getElementById('stat-likes');
     if (statLikes) statLikes.textContent = likesCount;
 }
@@ -363,20 +363,20 @@ onValue(ref(database, 'users'), (snapshot) => {
 });
 
 // ============ СОРТИРОВКА ПОСТОВ ============
-window.sortPosts = function(type) {
+window.sortPosts = function (type) {
     currentSort = type;
-    
+
     document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
     if (event && event.target) {
         event.target.classList.add('active');
     }
-    
+
     sortAndDisplayPosts();
 };
 
 function sortAndDisplayPosts() {
     let sortedPosts = [...allPosts];
-    
+
     if (currentSort === 'new') {
         sortedPosts.sort((a, b) => b.data.timestamp - a.data.timestamp);
     } else if (currentSort === 'hot') {
@@ -394,10 +394,10 @@ function sortAndDisplayPosts() {
             return scoreB - scoreA;
         });
     }
-    
+
     const postsContainer = document.getElementById('posts-container');
     postsContainer.innerHTML = '';
-    
+
     sortedPosts.forEach(post => {
         const postCard = createPostCard(post.id, post.data);
         postsContainer.appendChild(postCard);
@@ -408,16 +408,16 @@ function sortAndDisplayPosts() {
 function createPostCard(id, data) {
     const div = document.createElement('div');
     div.className = 'post-card';
-    
+
     const score = (data.upvotes || 0) - (data.downvotes || 0);
     const userVotes = JSON.parse(localStorage.getItem('userVotes') || '{}');
     const userVote = userVotes[id] || 0;
-    
+
     const date = new Date(data.timestamp);
     const timeAgo = getTimeAgo(date);
-    
+
     const admin = isAdmin();
-    
+
     div.innerHTML = `
         <div class="vote-section">
             <button class="vote-btn ${userVote === 1 ? 'upvoted' : ''}" onclick="vote('${id}', 1)">
@@ -473,31 +473,31 @@ function createPostCard(id, data) {
             </div>
         </div>
     `;
-    
+
     return div;
 }
 
 // ============ ГОЛОСОВАНИЕ ============
-window.vote = async function(postId, voteType) {
+window.vote = async function (postId, voteType) {
     if (userStatus.banned) {
         alert('❌ Вы забанены и не можете голосовать!');
         return;
     }
-    
+
     const userVotes = JSON.parse(localStorage.getItem('userVotes') || '{}');
     const currentVote = userVotes[postId] || 0;
-    
+
     try {
         const postRef = ref(database, `posts/${postId}`);
         const snapshot = await get(postRef);
         const postData = snapshot.val();
-        
+
         let upvotes = postData.upvotes || 0;
         let downvotes = postData.downvotes || 0;
-        
+
         if (currentVote === 1) upvotes--;
         if (currentVote === -1) downvotes--;
-        
+
         if (currentVote === voteType) {
             userVotes[postId] = 0;
         } else {
@@ -505,9 +505,9 @@ window.vote = async function(postId, voteType) {
             if (voteType === -1) downvotes++;
             userVotes[postId] = voteType;
         }
-        
+
         localStorage.setItem('userVotes', JSON.stringify(userVotes));
-        
+
         await set(postRef, {
             ...postData,
             upvotes: upvotes,
@@ -519,12 +519,12 @@ window.vote = async function(postId, voteType) {
 };
 
 // ============ УДАЛЕНИЕ ПОСТА ============
-window.deletePost = function(id) {
+window.deletePost = function (id) {
     if (!isAdmin()) {
         alert('❌ У вас нет прав!');
         return;
     }
-    
+
     if (confirm('Удалить этот пост?')) {
         remove(ref(database, 'posts/' + id))
             .then(() => console.log('🗑️ Пост удален'))
@@ -533,20 +533,20 @@ window.deletePost = function(id) {
 };
 
 // ============ АДМИН ПАНЕЛЬ - НАВИГАЦИЯ ============
-window.switchAdminTab = function(tabName) {
+window.switchAdminTab = function (tabName) {
     currentAdminTab = tabName;
-    
+
     document.querySelectorAll('.admin-tab-pane').forEach(pane => {
         pane.classList.remove('active');
     });
-    
+
     document.querySelectorAll('.admin-nav-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    
+
     const selectedPane = document.getElementById(`admin-tab-${tabName}`);
     if (selectedPane) selectedPane.classList.add('active');
-    
+
     if (event && event.target) {
         let btn = event.target;
         if (!btn.classList.contains('admin-nav-btn')) {
@@ -554,7 +554,7 @@ window.switchAdminTab = function(tabName) {
         }
         if (btn) btn.classList.add('active');
     }
-    
+
     // Загружаем данные для вкладки
     if (tabName === 'dashboard') loadDashboard();
     if (tabName === 'online') loadOnlineUsers();
@@ -599,22 +599,22 @@ async function loadStatistics() {
 async function loadRecentActivity() {
     const activityContainer = document.getElementById('recent-activity');
     if (!activityContainer) return;
-    
+
     activityContainer.innerHTML = '';
-    
+
     // Получаем последние посты
     const postsSnapshot = await get(query(postsRef, orderByChild('timestamp'), limitToLast(5)));
-    
+
     if (!postsSnapshot.exists()) {
         activityContainer.innerHTML = '<div class="empty-state"><p>Нет активности</p></div>';
         return;
     }
-    
+
     const posts = [];
     postsSnapshot.forEach(child => {
         posts.push({ id: child.key, data: child.val() });
     });
-    
+
     posts.reverse().forEach(post => {
         const item = document.createElement('div');
         item.className = 'activity-item';
@@ -627,7 +627,7 @@ async function loadRecentActivity() {
 }
 
 // ============ АДМИН ПАНЕЛЬ - ОНЛАЙН ПОЛЬЗОВАТЕЛИ ============
-window.refreshOnlineUsers = function() {
+window.refreshOnlineUsers = function () {
     loadOnlineUsers();
 };
 
@@ -635,14 +635,14 @@ function loadOnlineUsers() {
     onValue(onlineRef, (snapshot) => {
         const container = document.getElementById('online-users-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
-        
+
         if (!snapshot.exists()) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><h4>Нет онлайн пользователей</h4><p>Все офлайн</p></div>';
             return;
         }
-        
+
         snapshot.forEach(child => {
             const user = child.val();
             const item = document.createElement('div');
@@ -670,29 +670,29 @@ function loadAllUsers() {
     onValue(ref(database, 'users'), async (usersSnapshot) => {
         const container = document.getElementById('all-users-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
-        
+
         if (!usersSnapshot.exists()) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-user-friends"></i><h4>Нет пользователей</h4></div>';
             return;
         }
-        
+
         const bansSnapshot = await get(ref(database, 'bans'));
         const mutesSnapshot = await get(ref(database, 'mutes'));
-        
+
         const bansMap = {};
         const mutesMap = {};
-        
+
         bansSnapshot.forEach(child => { bansMap[child.key] = child.val(); });
         mutesSnapshot.forEach(child => { mutesMap[child.key] = child.val(); });
-        
+
         usersSnapshot.forEach(child => {
             const user = child.val();
             const userId = child.key;
             const isBanned = bansMap[userId];
             const isMuted = mutesMap[userId];
-            
+
             const item = document.createElement('div');
             item.className = 'admin-item';
             item.innerHTML = `
@@ -742,18 +742,18 @@ function loadBans() {
     onValue(ref(database, 'bans'), (snapshot) => {
         const container = document.getElementById('bans-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
-        
+
         if (!snapshot.exists()) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-ban"></i><h4>Нет забаненных пользователей</h4><p>Все чисты!</p></div>';
             return;
         }
-        
+
         snapshot.forEach(child => {
             const ban = child.val();
             const isExpired = ban.expiresAt && ban.expiresAt < Date.now();
-            
+
             const item = document.createElement('div');
             item.className = 'admin-item';
             item.innerHTML = `
@@ -780,10 +780,10 @@ function loadBans() {
     }, { onlyOnce: true });
 }
 
-window.clearExpiredBans = async function() {
+window.clearExpiredBans = async function () {
     const snapshot = await get(ref(database, 'bans'));
     let cleared = 0;
-    
+
     const promises = [];
     snapshot.forEach(child => {
         const ban = child.val();
@@ -792,7 +792,7 @@ window.clearExpiredBans = async function() {
             cleared++;
         }
     });
-    
+
     await Promise.all(promises);
     alert(`✅ Очищено истекших банов: ${cleared}`);
     loadBans();
@@ -803,18 +803,18 @@ function loadMutes() {
     onValue(ref(database, 'mutes'), (snapshot) => {
         const container = document.getElementById('mutes-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
-        
+
         if (!snapshot.exists()) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-volume-mute"></i><h4>Нет замученных пользователей</h4><p>Никто не наказан</p></div>';
             return;
         }
-        
+
         snapshot.forEach(child => {
             const mute = child.val();
             const isExpired = mute.expiresAt < Date.now();
-            
+
             const item = document.createElement('div');
             item.className = 'admin-item';
             item.innerHTML = `
@@ -841,10 +841,10 @@ function loadMutes() {
     }, { onlyOnce: true });
 }
 
-window.clearExpiredMutes = async function() {
+window.clearExpiredMutes = async function () {
     const snapshot = await get(ref(database, 'mutes'));
     let cleared = 0;
-    
+
     const promises = [];
     snapshot.forEach(child => {
         const mute = child.val();
@@ -853,7 +853,7 @@ window.clearExpiredMutes = async function() {
             cleared++;
         }
     });
-    
+
     await Promise.all(promises);
     alert(`✅ Очищено истекших мутов: ${cleared}`);
     loadMutes();
@@ -864,24 +864,24 @@ function loadAllPosts() {
     onValue(postsRef, (snapshot) => {
         const container = document.getElementById('all-posts-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
-        
+
         if (!snapshot.exists()) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-list"></i><h4>Нет постов</h4></div>';
             return;
         }
-        
+
         const posts = [];
         snapshot.forEach(child => {
             posts.push({ id: child.key, data: child.val() });
         });
-        
+
         posts.sort((a, b) => b.data.timestamp - a.data.timestamp);
-        
+
         posts.forEach(post => {
             const score = (post.data.upvotes || 0) - (post.data.downvotes || 0);
-            
+
             const item = document.createElement('div');
             item.className = 'admin-item';
             item.innerHTML = `
@@ -908,13 +908,13 @@ function loadAllPosts() {
 }
 
 // ============ ФУНКЦИИ МОДЕРАЦИИ ============
-window.banUser = async function(fingerprint, username) {
+window.banUser = async function (fingerprint, username) {
     const reason = prompt('Причина бана:', 'Нарушение правил');
     if (!reason) return;
-    
+
     const duration = prompt('Длительность (минут, 0 = навсегда):', '0');
     const durationMs = parseInt(duration) * 60 * 1000;
-    
+
     try {
         await set(ref(database, `bans/${fingerprint}`), {
             fingerprint, username, reason,
@@ -931,7 +931,7 @@ window.banUser = async function(fingerprint, username) {
 
 window.banUserById = window.banUser;
 
-window.unbanUser = async function(fingerprint) {
+window.unbanUser = async function (fingerprint) {
     if (confirm('Снять бан с этого пользователя?')) {
         try {
             await remove(ref(database, `bans/${fingerprint}`));
@@ -945,13 +945,13 @@ window.unbanUser = async function(fingerprint) {
     }
 };
 
-window.muteUser = async function(fingerprint, username) {
+window.muteUser = async function (fingerprint, username) {
     const reason = prompt('Причина мута:', 'Спам');
     if (!reason) return;
-    
+
     const duration = prompt('Длительность (минут):', '60');
     const durationMs = parseInt(duration) * 60 * 1000;
-    
+
     try {
         await set(ref(database, `mutes/${fingerprint}`), {
             fingerprint, username, reason,
@@ -968,7 +968,7 @@ window.muteUser = async function(fingerprint, username) {
 
 window.muteUserById = window.muteUser;
 
-window.unmuteUser = async function(fingerprint) {
+window.unmuteUser = async function (fingerprint) {
     if (confirm('Снять мут с этого пользователя?')) {
         try {
             await remove(ref(database, `mutes/${fingerprint}`));
@@ -982,13 +982,13 @@ window.unmuteUser = async function(fingerprint) {
     }
 };
 
-window.deleteAllUserPosts = async function(fingerprint) {
+window.deleteAllUserPosts = async function (fingerprint) {
     if (!confirm('Удалить все посты этого пользователя?')) return;
-    
+
     try {
         const snapshot = await get(postsRef);
         let deleted = 0;
-        
+
         const promises = [];
         snapshot.forEach(child => {
             if (child.val().fingerprint === fingerprint) {
@@ -996,7 +996,7 @@ window.deleteAllUserPosts = async function(fingerprint) {
                 deleted++;
             }
         });
-        
+
         await Promise.all(promises);
         alert(`✅ Удалено постов: ${deleted}`);
     } catch (error) {
@@ -1014,7 +1014,7 @@ function escapeHtml(text) {
 
 function getTimeAgo(date) {
     const seconds = Math.floor((new Date() - date) / 1000);
-    
+
     if (seconds < 60) return `${seconds}с назад`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}м назад`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}ч назад`;
@@ -1043,7 +1043,7 @@ function clearUsername() {
 }
 
 // ============ ГЛОБАЛЬНАЯ ФУНКЦИЯ ДЛЯ ОЧИСТКИ НИКА ============
-window.clearSavedUsername = function() {
+window.clearSavedUsername = function () {
     if (confirm('Вы уверены, что хотите очистить сохраненный ник? При следующем посещении сайта поле имени будет пустым.')) {
         clearUsername();
         const usernameInput = document.getElementById('username');
@@ -1057,7 +1057,7 @@ window.clearSavedUsername = function() {
 
 // ============ СИСТЕМА УВЕДОМЛЕНИЙ ============
 // Показать/скрыть уведомления
-window.toggleNotifications = function() {
+window.toggleNotifications = function () {
     const notifications = document.getElementById('notifications');
     if (notifications) {
         notifications.classList.toggle('show');
@@ -1065,7 +1065,7 @@ window.toggleNotifications = function() {
 };
 
 // Прокрутка к началу страницы
-window.scrollToTop = function() {
+window.scrollToTop = function () {
     window.scrollTo({
         top: 0,
         behavior: 'smooth'
@@ -1073,7 +1073,7 @@ window.scrollToTop = function() {
 };
 
 // Обработка поиска
-window.handleSearch = function(event) {
+window.handleSearch = function (event) {
     if (event.key === 'Enter') {
         const query = event.target.value.trim();
         if (query) {
@@ -1099,8 +1099,8 @@ function performSearch(query) {
         const searchQuery = query.toLowerCase();
 
         return title.includes(searchQuery) ||
-               text.includes(searchQuery) ||
-               author.includes(searchQuery);
+            text.includes(searchQuery) ||
+            author.includes(searchQuery);
     });
 
     if (filteredPosts.length === 0) {
@@ -1151,7 +1151,7 @@ function displaySearchResults(posts, query) {
 }
 
 // Очистка поиска
-window.clearSearch = function() {
+window.clearSearch = function () {
     const postsContainer = document.getElementById('posts-container');
     if (!postsContainer) return;
 
@@ -1262,7 +1262,7 @@ function showInfoNotification(message, duration = 4000) {
 
 // ============ СИСТЕМА КОММЕНТАРИЕВ ============
 // Показать/скрыть комментарии
-window.toggleComments = function(postId) {
+window.toggleComments = function (postId) {
     const commentsSection = document.getElementById(`comments-${postId}`);
     if (commentsSection) {
         const isVisible = commentsSection.style.display !== 'none';
@@ -1373,7 +1373,7 @@ function createCommentElement(id, data, postId) {
 }
 
 // Отправка комментария
-window.submitComment = async function(postId) {
+window.submitComment = async function (postId) {
     if (!fingerprintReady) {
         alert('⏳ Загрузка... Попробуйте через секунду');
         return;
@@ -1431,7 +1431,7 @@ window.submitComment = async function(postId) {
 };
 
 // Голосование за комментарий
-window.voteComment = async function(commentId, voteType) {
+window.voteComment = async function (commentId, voteType) {
     if (userStatus.banned) {
         alert('❌ Вы забанены и не можете голосовать!');
         return;
@@ -1472,7 +1472,7 @@ window.voteComment = async function(commentId, voteType) {
 };
 
 // Удаление комментария
-window.deleteComment = function(commentId, postId) {
+window.deleteComment = function (commentId, postId) {
     if (!isAdmin()) {
         alert('❌ У вас нет прав!');
         return;
@@ -1555,7 +1555,7 @@ function showConnectionError() {
 }
 
 // Проверка подключения к интернету
-window.checkConnection = async function() {
+window.checkConnection = async function () {
     const postsContainer = document.getElementById('posts-container');
     if (!postsContainer) return;
 
@@ -1596,80 +1596,91 @@ window.checkConnection = async function() {
     }
 };
 
-    const usernameInput = document.getElementById('username');
-    if (usernameInput) {
-        // Загружаем сохраненный ник при старте
-        const savedUsername = loadUsername();
-        if (savedUsername) {
-            usernameInput.value = savedUsername;
-            updateAdminUI();
-            await recordUserActivity();
-
-            // Обновляем онлайн статус с сохраненным именем
-            set(userStatusOnlineRef, {
-                online: true,
-                timestamp: serverTimestamp(),
-                fingerprint: userFingerprint || 'loading',
-                username: savedUsername
-            });
-        }
-
-        usernameInput.addEventListener('input', () => {
-            const username = usernameInput.value.trim();
-
-            // Сохраняем ник при вводе
-            if (username) {
-                saveUsername(username);
-            }
-
-            updateAdminUI();
-            recordUserActivity();
-
-            // Обновляем имя в онлайн статусе
-            set(userStatusOnlineRef, {
-                online: true,
-                timestamp: serverTimestamp(),
-                fingerprint: userFingerprint || 'loading',
-                username: username || 'Аноним'
-            });
-        });
-
-        // Добавляем обработчик потери фокуса для сохранения ника
-        usernameInput.addEventListener('blur', () => {
-            const username = usernameInput.value.trim();
-            if (username) {
-                saveUsername(username);
-            }
-        });
-
-        // Добавляем обработчик Enter для отправки комментариев
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.ctrlKey) {
-                const activeElement = document.activeElement;
-                if (activeElement && activeElement.classList.contains('comment-input')) {
-                    const postId = activeElement.id.replace('comment-text-', '');
-                    if (postId) {
-                        e.preventDefault();
-                        submitComment(postId);
-                    }
-                }
-            }
-        });
-
+const usernameInput = document.getElementById('username');
+if (usernameInput) {
+    // Загружаем сохраненный ник при старте
+    const savedUsername = loadUsername();
+    if (savedUsername) {
+        usernameInput.value = savedUsername;
         updateAdminUI();
+        await recordUserActivity();
+
+        // Обновляем онлайн статус с сохраненным именем
+        set(userStatusOnlineRef, {
+            online: true,
+            timestamp: serverTimestamp(),
+            fingerprint: userFingerprint || 'loading',
+            username: savedUsername
+        });
     }
 
-    // Скрываем экран загрузки
-    hideLoadingScreen();
+    usernameInput.addEventListener('input', () => {
+        const username = usernameInput.value.trim();
 
-    console.log('✅ DevTalk готов! Все данные обновляются в реальном времени');
+        // Сохраняем ник при вводе
+        if (username) {
+            saveUsername(username);
+        }
 
-    // Показываем индикатор реального времени в консоли
-    setInterval(() => {
-        console.log('🔄 DevTalk работает в реальном времени - все данные синхронизированы');
-    }, 60000); // Каждую минуту
+        updateAdminUI();
+        recordUserActivity();
 
-    // Показываем приветственное уведомление
-    setTimeout(() => {
-        showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
-    }, 1000);
+        // Обновляем имя в онлайн статусе
+        set(userStatusOnlineRef, {
+            online: true,
+            timestamp: serverTimestamp(),
+            fingerprint: userFingerprint || 'loading',
+            username: username || 'Аноним'
+        });
+    });
+
+    // Добавляем обработчик потери фокуса для сохранения ника
+    usernameInput.addEventListener('blur', () => {
+        const username = usernameInput.value.trim();
+        if (username) {
+            saveUsername(username);
+        }
+    });
+
+    // Добавляем обработчик Enter для отправки комментариев
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+            const activeElement = document.activeElement;
+            if (activeElement && activeElement.classList.contains('comment-input')) {
+                const postId = activeElement.id.replace('comment-text-', '');
+                if (postId) {
+                    e.preventDefault();
+                    submitComment(postId);
+                }
+            }
+        }
+    });
+
+    updateAdminUI();
+}
+
+// Скрываем экран загрузки
+hideLoadingScreen();
+
+console.log('✅ DevTalk готов! Все данные обновляются в реальном времени');
+
+// Показываем индикатор реального времени в консоли
+setInterval(() => {
+    console.log('🔄 DevTalk работает в реальном времени - все данные синхронизированы');
+}, 60000); // Каждую минуту
+
+// Показываем приветственное уведомление
+setTimeout(() => {
+    showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
+}, 1000);
+
+// Скрыть экран загрузки
+function hideLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden');
+        setTimeout(() => {
+            loadingScreen.style.display = 'none';
+        }, 500);
+    }
+}
