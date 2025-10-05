@@ -1496,31 +1496,9 @@ function updateCommentCount(postId, count) {
     }
 };
 
-// ============ ФУНКЦИИ ПРОГРЕССА ЗАГРУЗКИ ============
-function updateLoadingProgress(title, message) {
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-        const titleEl = loadingScreen.querySelector('h2');
-        const messageEl = loadingScreen.querySelector('p');
-
-        if (titleEl) titleEl.textContent = title;
-        if (messageEl) messageEl.textContent = message;
-    }
-}
-
-function showLoadingScreen() {
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-        loadingScreen.style.display = 'flex';
-        loadingScreen.classList.remove('hidden');
-    }
-}
-
 // ============ ПРОВЕРКА ПОДКЛЮЧЕНИЯ К FIREBASE ============
 async function checkFirebaseConnection() {
     try {
-        updateLoadingProgress('Проверка связи...', 'Проверка подключения к серверу...');
-
         // Проверяем доступность Firebase
         const testRef = ref(database, '.info/connected');
         const connected = await new Promise((resolve) => {
@@ -1548,9 +1526,6 @@ async function checkFirebaseConnection() {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация с поддержкой реального времени...');
 
-    // Показываем прогресс инициализации
-    updateLoadingProgress('Инициализация...', 'Подключение к базе данных...');
-
     // Попытка инициализации с повторными попытками и таймаутом
     let retries = 3;
     let initialized = false;
@@ -1559,8 +1534,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initPromise = new Promise(async (resolve, reject) => {
         while (retries > 0 && !initialized) {
             try {
-                updateLoadingProgress('Инициализация...', `Подключение к серверу (попытка ${4 - retries})...`);
-
                 // Проверяем подключение к Firebase перед инициализацией
                 const firebaseConnected = await checkFirebaseConnection();
                 if (!firebaseConnected) {
@@ -1577,7 +1550,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 retries--;
 
                 if (retries > 0) {
-                    updateLoadingProgress('Повторная попытка...', `Через 2 секунды (${retries} осталось)...`);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 } else {
                     reject(error);
@@ -1669,9 +1641,6 @@ window.showOfflineMode = function () {
             </div>
         `;
     }
-
-    // Скрываем экран загрузки
-    hideLoadingScreen();
 
     showInfoNotification('Переход в автономный режим', 4000);
 };
@@ -1793,14 +1762,3 @@ setInterval(() => {
 setTimeout(() => {
     showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
 }, 1000);
-
-// Скрыть экран загрузки
-function hideLoadingScreen() {
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-        loadingScreen.classList.add('hidden');
-        setTimeout(() => {
-            loadingScreen.style.display = 'none';
-        }, 500);
-    }
-}
