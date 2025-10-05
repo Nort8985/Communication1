@@ -16,6 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const postsRef = ref(database, 'posts');
+const commentsRef = ref(database, 'comments');
 
 // ============ ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ============
 let userFingerprint = null;
@@ -412,6 +413,9 @@ function createPostCard(id, data) {
             <div class="post-title">${escapeHtml(data.title)}</div>
             ${data.text ? `<div class="post-body">${escapeHtml(data.text)}</div>` : ''}
             <div class="post-actions">
+                <button class="action-btn comment" onclick="toggleComments('${id}')">
+                    <i class="fas fa-comments"></i> Комментарии (<span id="comment-count-${id}">0</span>)
+                </button>
                 ${admin && data.fingerprint ? `
                     <button class="action-btn ban" onclick="banUser('${data.fingerprint}', '${escapeHtml(data.author)}')">
                         <i class="fas fa-ban"></i> Бан
@@ -425,6 +429,22 @@ function createPostCard(id, data) {
                         <i class="fas fa-trash"></i> Удалить
                     </button>
                 ` : ''}
+            </div>
+
+            <!-- Комментарии -->
+            <div class="comments-section" id="comments-${id}" style="display: none;">
+                <div class="comments-header">
+                    <h4><i class="fas fa-comments"></i> Комментарии</h4>
+                </div>
+                <div class="comments-container" id="comments-container-${id}">
+                    <!-- Комментарии будут загружаться здесь -->
+                </div>
+                <div class="comment-form">
+                    <input type="text" id="comment-text-${id}" placeholder="Написать комментарий..." class="comment-input">
+                    <button class="comment-submit-btn" onclick="submitComment('${id}')">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -1004,6 +1024,238 @@ window.clearSavedUsername = function() {
     }
 };
 
+// ============ СИСТЕМА КОММЕНТАРИЕВ ============
+// Показать/скрыть комментарии
+window.toggleComments = function(postId) {
+    const commentsSection = document.getElementById(`comments-${postId}`);
+    if (commentsSection) {
+        const isVisible = commentsSection.style.display !== 'none';
+        commentsSection.style.display = isVisible ? 'none' : 'block';
+
+        if (!isVisible) {
+            loadComments(postId);
+        }
+    }
+};
+
+// Загрузка комментариев для поста
+function loadComments(postId) {
+    const commentsContainer = document.getElementById(`comments-container-${postId}`);
+    if (!commentsContainer) return;
+
+    // Показываем индикатор загрузки
+    commentsContainer.innerHTML = '<div class="comment-loading">Загрузка комментариев...</div>';
+
+    // Слушаем изменения в комментариях для этого поста
+    const postCommentsRef = query(
+        commentsRef,
+        orderByChild('postId'),
+    );
+
+    onValue(postCommentsRef, (snapshot) => {
+        commentsContainer.innerHTML = '';
+
+        if (!snapshot.exists()) {
+            commentsContainer.innerHTML = '<div class="no-comments">Комментариев пока нет. Будьте первым!</div>';
+            updateCommentCount(postId, 0);
+            return;
+        }
+
+        const comments = [];
+        snapshot.forEach(child => {
+            const comment = child.val();
+            if (comment.postId === postId) {
+                comments.push({
+                    id: child.key,
+                    data: comment
+                });
+            }
+        });
+
+        if (comments.length === 0) {
+            commentsContainer.innerHTML = '<div class="no-comments">Комментариев пока нет. Будьте первым!</div>';
+            updateCommentCount(postId, 0);
+            return;
+        }
+
+        // Сортируем комментарии по времени
+        comments.sort((a, b) => a.data.timestamp - b.data.timestamp);
+
+        comments.forEach(comment => {
+            const commentElement = createCommentElement(comment.id, comment.data, postId);
+            commentsContainer.appendChild(commentElement);
+        });
+
+        updateCommentCount(postId, comments.length);
+    }, { onlyOnce: true });
+}
+
+// Создание элемента комментария
+function createCommentElement(id, data, postId) {
+    const div = document.createElement('div');
+    div.className = 'comment-item';
+
+    const date = new Date(data.timestamp);
+    const timeAgo = getTimeAgo(date);
+    const admin = isAdmin();
+
+    // Загружаем голоса пользователя для комментариев
+    const userCommentVotes = JSON.parse(localStorage.getItem('userCommentVotes') || '{}');
+    const userVote = userCommentVotes[id] || 0;
+    const score = (data.upvotes || 0) - (data.downvotes || 0);
+
+    div.innerHTML = `
+        <div class="comment-vote-section">
+            <button class="comment-vote-btn ${userVote === 1 ? 'upvoted' : ''}" onclick="voteComment('${id}', 1)">
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            <div class="comment-vote-count ${score > 0 ? 'positive' : score < 0 ? 'negative' : ''}">${formatNumber(score)}</div>
+            <button class="comment-vote-btn ${userVote === -1 ? 'downvoted' : ''}" onclick="voteComment('${id}', -1)">
+                <i class="fas fa-arrow-down"></i>
+            </button>
+        </div>
+        <div class="comment-content">
+            <div class="comment-header">
+                <span class="comment-author">${escapeHtml(data.author)}</span>
+                ${data.author === 'Nort89855' ? '<span class="admin-badge">ADMIN</span>' : ''}
+                <span class="comment-time">${timeAgo}</span>
+                ${admin ? `
+                    <button class="comment-delete-btn" onclick="deleteComment('${id}', '${postId}')" title="Удалить комментарий">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                ` : ''}
+            </div>
+            <div class="comment-text">${escapeHtml(data.text)}</div>
+        </div>
+    `;
+
+    return div;
+}
+
+// Отправка комментария
+window.submitComment = async function(postId) {
+    if (!fingerprintReady) {
+        alert('⏳ Загрузка... Попробуйте через секунду');
+        return;
+    }
+
+    const username = document.getElementById('username')?.value.trim();
+    const commentText = document.getElementById(`comment-text-${postId}`)?.value.trim();
+
+    if (!username) {
+        alert('Введите ваше имя!');
+        return;
+    }
+
+    if (!commentText) {
+        alert('Введите текст комментария!');
+        return;
+    }
+
+    if (userStatus.banned) {
+        alert('❌ Вы забанены и не можете комментировать!');
+        return;
+    }
+
+    if (userStatus.muted) {
+        alert('❌ Вы замучены и не можете комментировать!');
+        return;
+    }
+
+    const newComment = {
+        postId: postId,
+        author: username,
+        text: commentText,
+        timestamp: Date.now(),
+        upvotes: 0,
+        downvotes: 0,
+        fingerprint: userFingerprint,
+        userAgent: navigator.userAgent.substring(0, 200)
+    };
+
+    try {
+        await push(commentsRef, newComment);
+
+        // Очищаем поле ввода
+        const commentInput = document.getElementById(`comment-text-${postId}`);
+        if (commentInput) {
+            commentInput.value = '';
+        }
+
+        console.log('✅ Комментарий добавлен!');
+        await recordUserActivity();
+    } catch (error) {
+        console.error('❌ Ошибка добавления комментария:', error);
+        alert('Ошибка: ' + error.message);
+    }
+};
+
+// Голосование за комментарий
+window.voteComment = async function(commentId, voteType) {
+    if (userStatus.banned) {
+        alert('❌ Вы забанены и не можете голосовать!');
+        return;
+    }
+
+    const userCommentVotes = JSON.parse(localStorage.getItem('userCommentVotes') || '{}');
+    const currentVote = userCommentVotes[commentId] || 0;
+
+    try {
+        const commentRef = ref(database, `comments/${commentId}`);
+        const snapshot = await get(commentRef);
+        const commentData = snapshot.val();
+
+        let upvotes = commentData.upvotes || 0;
+        let downvotes = commentData.downvotes || 0;
+
+        if (currentVote === 1) upvotes--;
+        if (currentVote === -1) downvotes--;
+
+        if (currentVote === voteType) {
+            userCommentVotes[commentId] = 0;
+        } else {
+            if (voteType === 1) upvotes++;
+            if (voteType === -1) downvotes++;
+            userCommentVotes[commentId] = voteType;
+        }
+
+        localStorage.setItem('userCommentVotes', JSON.stringify(userCommentVotes));
+
+        await set(commentRef, {
+            ...commentData,
+            upvotes: upvotes,
+            downvotes: downvotes
+        });
+    } catch (error) {
+        console.error('Ошибка голосования за комментарий:', error);
+    }
+};
+
+// Удаление комментария
+window.deleteComment = function(commentId, postId) {
+    if (!isAdmin()) {
+        alert('❌ У вас нет прав!');
+        return;
+    }
+
+    if (confirm('Удалить этот комментарий?')) {
+        remove(ref(database, 'comments/' + commentId))
+            .then(() => {
+                console.log('🗑️ Комментарий удален');
+                loadComments(postId); // Перезагружаем комментарии
+            })
+            .catch((error) => alert('Ошибка: ' + error.message));
+    }
+};
+
+// Обновление счетчика комментариев
+function updateCommentCount(postId, count) {
+    const countElement = document.getElementById(`comment-count-${postId}`);
+    if (countElement) {
+        countElement.textContent = count;
+    }
+};
+
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация...');
@@ -1054,6 +1306,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const username = usernameInput.value.trim();
             if (username) {
                 saveUsername(username);
+            }
+        });
+
+        // Добавляем обработчик Enter для отправки комментариев
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                const activeElement = document.activeElement;
+                if (activeElement && activeElement.classList.contains('comment-input')) {
+                    const postId = activeElement.id.replace('comment-text-', '');
+                    if (postId) {
+                        e.preventDefault();
+                        submitComment(postId);
+                    }
+                }
             }
         });
 
