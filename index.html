@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit-Style Обсуждения</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Навбар -->
+    <nav class="navbar">
+        <div class="nav-container">
+        <div class="nav-left">
+            <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="logo">
+                <i class="fas fa-comments"></i>
+                <span>Обсуждения</span>
+            </div>
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" placeholder="Поиск...">
+            </div>
+        </div>
+        <div class="nav-right">
+                <button class="icon-btn" onclick="toggleTheme()" title="Сменить тему">
+                    <i class="fas fa-moon" id="theme-icon"></i>
+                </button>
+                <div class="online-badge">
+                    <i class="fas fa-circle"></i>
+                    <span id="online-count">0</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Мобильное меню -->
+    <div class="mobile-overlay" onclick="toggleMobileMenu()"></div>
+    <div class="mobile-sidebar" id="mobile-sidebar">
+        <div class="mobile-sidebar-header">
+            <h3><i class="fas fa-bars"></i> Меню</h3>
+            <button class="close-btn" onclick="toggleMobileMenu()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="mobile-sidebar-content">
+            <!-- Сортировка -->
+            <div class="sidebar-card">
+                <h3><i class="fas fa-fire"></i> Сортировка</h3>
+                <div class="sort-buttons">
+                    <button class="sort-btn active" onclick="sortPosts('new'); toggleMobileMenu();">
+                        <i class="fas fa-clock"></i> Новые
+                    </button>
+                    <button class="sort-btn" onclick="sortPosts('hot'); toggleMobileMenu();">
+                        <i class="fas fa-fire"></i> Популярные
+                    </button>
+                    <button class="sort-btn" onclick="sortPosts('top'); toggleMobileMenu();">
+                        <i class="fas fa-arrow-up"></i> Топ
+                    </button>
+                </div>
+            </div>
+
+            <!-- Статистика -->
+            <div class="sidebar-card info-card">
+                <h3>📊 Статистика</h3>
+                <div class="stat-item">
+                    <span>Постов:</span>
+                    <strong id="posts-count-mobile">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Пользователей:</span>
+                    <strong id="users-count-mobile">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Онлайн:</span>
+                    <strong id="online-count-mobile">0</strong>
+                </div>
+            </div>
+
+            <!-- Правила -->
+            <div class="sidebar-card rules-card">
+                <h3>📜 Правила</h3>
+                <ol>
+                    <li>Будьте вежливы</li>
+                    <li>Не спамьте</li>
+                    <li>Никакого оскорбления</li>
+                    <li>Соблюдайте тему</li>
+                </ol>
+            </div>
+
+            <!-- Админ кнопка -->
+            <div class="sidebar-card" id="admin-sidebar-mobile" style="display: none;">
+                <button class="admin-btn" onclick="openAdminPanel(); toggleMobileMenu();">
+                    <i class="fas fa-shield-alt"></i> Админ-панель
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основной контейнер -->
+    <div class="main-container">
+        <!-- Левый сайдбар -->
+        <aside class="left-sidebar">
+            <div class="sidebar-card">
+                <h3><i class="fas fa-fire"></i> Сортировка</h3>
+                <div class="sort-buttons">
+                    <button class="sort-btn active" onclick="sortPosts('new')">
+                        <i class="fas fa-clock"></i> Новые
+                    </button>
+                    <button class="sort-btn" onclick="sortPosts('hot')">
+                        <i class="fas fa-fire"></i> Популярные
+                    </button>
+                    <button class="sort-btn" onclick="sortPosts('top')">
+                        <i class="fas fa-arrow-up"></i> Топ
+                    </button>
+                </div>
+            </div>
+
+            <!-- Админ кнопка -->
+            <div class="sidebar-card" id="admin-sidebar" style="display: none;">
+                <button class="admin-btn" onclick="openAdminPanel()">
+                    <i class="fas fa-shield-alt"></i> Админ-панель
+                </button>
+            </div>
+        </aside>
+
+        <!-- Центральный контент -->
+        <main class="content">
+            <div class="create-post-card">
+                <div class="user-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <input type="text" id="username" placeholder="Ваше имя" maxlength="20" class="username-input">
+                <button class="create-post-btn" onclick="openPostModal()">
+                    <i class="fas fa-plus"></i> Создать пост
+                </button>
+            </div>
+
+            <div id="posts-container"></div>
+        </main>
+
+        <!-- Правый сайдбар -->
+        <aside class="right-sidebar">
+            <div class="sidebar-card info-card">
+                <h3>📊 Статистика</h3>
+                <div class="stat-item">
+                    <span>Постов:</span>
+                    <strong id="posts-count">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Пользователей:</span>
+                    <strong id="users-count">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Онлайн:</span>
+                    <strong id="online-count-sidebar">0</strong>
+                </div>
+            </div>
+
+            <div class="sidebar-card rules-card">
+                <h3>📜 Правила</h3>
+                <ol>
+                    <li>Будьте вежливы</li>
+                    <li>Не спамьте</li>
+                    <li>Никакого оскорбления</li>
+                    <li>Соблюдайте тему</li>
+                </ol>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Модальное окно создания поста -->
+    <div id="post-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Создать пост</h2>
+                <button class="close-btn" onclick="closePostModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="post-title" placeholder="Заголовок поста" maxlength="100" class="post-title-input">
+                <textarea id="post-text" placeholder="Текст поста (необязательно)" rows="6" class="post-text-input"></textarea>
+                <div class="modal-actions">
+                    <button class="cancel-btn" onclick="closePostModal()">Отмена</button>
+                    <button class="submit-btn" onclick="submitPost()">
+                        <i class="fas fa-paper-plane"></i> Опубликовать
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- РАСШИРЕННАЯ АДМИН ПАНЕЛЬ -->
+    <div id="admin-modal" class="admin-modal">
+        <div class="admin-modal-content">
+            <div class="admin-modal-header">
+                <h2><i class="fas fa-shield-alt"></i> Панель администратора</h2>
+                <button class="close-btn" onclick="closeAdminPanel()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Навигация -->
+            <div class="admin-nav">
+                <button class="admin-nav-btn active" onclick="switchAdminTab('dashboard')">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Панель</span>
+                </button>
+                <button class="admin-nav-btn" onclick="switchAdminTab('online')">
+                    <i class="fas fa-users"></i>
+                    <span>Онлайн</span>
+                    <span class="badge" id="badge-online">0</span>
+                </button>
+                <button class="admin-nav-btn" onclick="switchAdminTab('users')">
+                    <i class="fas fa-user-friends"></i>
+                    <span>Пользователи</span>
+                </button>
+                <button class="admin-nav-btn" onclick="switchAdminTab('bans')">
+                    <i class="fas fa-ban"></i>
+                    <span>Баны</span>
+                    <span class="badge badge-danger" id="badge-bans">0</span>
+                </button>
+                <button class="admin-nav-btn" onclick="switchAdminTab('mutes')">
+                    <i class="fas fa-volume-mute"></i>
+                    <span>Муты</span>
+                    <span class="badge badge-warning" id="badge-mutes">0</span>
+                </button>
+                <button class="admin-nav-btn" onclick="switchAdminTab('posts')">
+                    <i class="fas fa-list"></i>
+                    <span>Посты</span>
+                </button>
+            </div>
+
+            <!-- Контент вкладок -->
+            <div class="admin-content">
+                
+                <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
+                <div id="admin-tab-dashboard" class="admin-tab-pane active">
+                    <h3>📊 Общая статистика</h3>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-icon" style="background: #4CAF50;">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-label">Всего пользователей</div>
+                                <div class="stat-value" id="stat-users">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon" style="background: #2196F3;">
+                                <i class="fas fa-circle"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-label">Онлайн сейчас</div>
+                                <div class="stat-value" id="stat-online">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon" style="background: #FF9800;">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-label">Всего постов</div>
+                                <div class="stat-value" id="stat-posts">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon" style="background: #F44336;">
+                                <i class="fas fa-ban"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-label">Активных банов</div>
+                                <div class="stat-value" id="stat-bans">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon" style="background: #9C27B0;">
+                                <i class="fas fa-volume-mute"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-label">Активных мутов</div>
+                                <div class="stat-value" id="stat-mutes">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon" style="background: #00BCD4;">
+                                <i class="fas fa-heart"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-label">Всего лайков</div>
+                                <div class="stat-value" id="stat-likes">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 30px;">🔥 Последняя активность</h3>
+                    <div id="recent-activity"></div>
+                </div>
+
+                <!-- ОНЛАЙН ПОЛЬЗОВАТЕЛИ -->
+                <div id="admin-tab-online" class="admin-tab-pane">
+                    <div class="tab-header">
+                        <h3><i class="fas fa-circle" style="color: #46d160;"></i> Онлайн пользователи</h3>
+                        <button class="refresh-btn" onclick="refreshOnlineUsers()">
+                            <i class="fas fa-sync-alt"></i> Обновить
+                        </button>
+                    </div>
+                    <div id="online-users-list"></div>
+                </div>
+
+                <!-- ВСЕ ПОЛЬЗОВАТЕЛИ -->
+                <div id="admin-tab-users" class="admin-tab-pane">
+                    <div class="tab-header">
+                        <h3><i class="fas fa-user-friends"></i> Все пользователи</h3>
+                        <input type="text" id="search-users" placeholder="Поиск пользователя..." class="search-input">
+                    </div>
+                    <div id="all-users-list"></div>
+                </div>
+
+                <!-- БАНЫ -->
+                <div id="admin-tab-bans" class="admin-tab-pane">
+                    <div class="tab-header">
+                        <h3><i class="fas fa-ban"></i> Забаненные пользователи</h3>
+                        <div class="header-actions">
+                            <button class="action-btn" onclick="clearExpiredBans()">
+                                <i class="fas fa-broom"></i> Очистить истекшие
+                            </button>
+                        </div>
+                    </div>
+                    <div id="bans-list"></div>
+                </div>
+
+                <!-- МУТЫ -->
+                <div id="admin-tab-mutes" class="admin-tab-pane">
+                    <div class="tab-header">
+                        <h3><i class="fas fa-volume-mute"></i> Замученные пользователи</h3>
+                        <div class="header-actions">
+                            <button class="action-btn" onclick="clearExpiredMutes()">
+                                <i class="fas fa-broom"></i> Очистить истекшие
+                            </button>
+                        </div>
+                    </div>
+                    <div id="mutes-list"></div>
+                </div>
+
+                <!-- ПОСТЫ -->
+                <div id="admin-tab-posts" class="admin-tab-pane">
+                    <div class="tab-header">
+                        <h3><i class="fas fa-list"></i> Все посты</h3>
+                        <input type="text" id="search-posts" placeholder="Поиск по постам..." class="search-input">
+                    </div>
+                    <div id="all-posts-list"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
