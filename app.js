@@ -976,30 +976,89 @@ function formatNumber(num) {
     return num.toString();
 }
 
+// ============ СОХРАНЕНИЕ И ЗАГРУЗКА НИКА ============
+function saveUsername(username) {
+    if (username && username.trim()) {
+        localStorage.setItem('savedUsername', username.trim());
+    }
+}
+
+function loadUsername() {
+    return localStorage.getItem('savedUsername') || '';
+}
+
+function clearUsername() {
+    localStorage.removeItem('savedUsername');
+}
+
+// ============ ГЛОБАЛЬНАЯ ФУНКЦИЯ ДЛЯ ОЧИСТКИ НИКА ============
+window.clearSavedUsername = function() {
+    if (confirm('Вы уверены, что хотите очистить сохраненный ник? При следующем посещении сайта поле имени будет пустым.')) {
+        clearUsername();
+        const usernameInput = document.getElementById('username');
+        if (usernameInput) {
+            usernameInput.value = '';
+            usernameInput.focus();
+        }
+        alert('✅ Сохраненный ник очищен!');
+    }
+};
+
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация...');
-    
+
     await initFingerprint();
     await initOnlineStatus();
-    
+
     const usernameInput = document.getElementById('username');
     if (usernameInput) {
+        // Загружаем сохраненный ник при старте
+        const savedUsername = loadUsername();
+        if (savedUsername) {
+            usernameInput.value = savedUsername;
+            updateAdminUI();
+            await recordUserActivity();
+
+            // Обновляем онлайн статус с сохраненным именем
+            set(userStatusOnlineRef, {
+                online: true,
+                timestamp: serverTimestamp(),
+                fingerprint: userFingerprint || 'loading',
+                username: savedUsername
+            });
+        }
+
         usernameInput.addEventListener('input', () => {
+            const username = usernameInput.value.trim();
+
+            // Сохраняем ник при вводе
+            if (username) {
+                saveUsername(username);
+            }
+
             updateAdminUI();
             recordUserActivity();
-            
+
             // Обновляем имя в онлайн статусе
             set(userStatusOnlineRef, {
                 online: true,
                 timestamp: serverTimestamp(),
                 fingerprint: userFingerprint || 'loading',
-                username: usernameInput.value.trim() || 'Аноним'
+                username: username || 'Аноним'
             });
         });
-        
+
+        // Добавляем обработчик потери фокуса для сохранения ника
+        usernameInput.addEventListener('blur', () => {
+            const username = usernameInput.value.trim();
+            if (username) {
+                saveUsername(username);
+            }
+        });
+
         updateAdminUI();
     }
-    
+
     console.log('✅ Готово!');
 });
