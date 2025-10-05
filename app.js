@@ -45,6 +45,8 @@ let fingerprintReady = false;
 let currentSort = 'new';
 let allPosts = [];
 let currentAdminTab = 'dashboard';
+let notifications = [];
+let notificationTimeout = null;
 
 // ============ FINGERPRINT ============
 async function initFingerprint() {
@@ -1053,6 +1055,211 @@ window.clearSavedUsername = function() {
     }
 };
 
+// ============ СИСТЕМА УВЕДОМЛЕНИЙ ============
+// Показать/скрыть уведомления
+window.toggleNotifications = function() {
+    const notifications = document.getElementById('notifications');
+    if (notifications) {
+        notifications.classList.toggle('show');
+    }
+};
+
+// Прокрутка к началу страницы
+window.scrollToTop = function() {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+};
+
+// Обработка поиска
+window.handleSearch = function(event) {
+    if (event.key === 'Enter') {
+        const query = event.target.value.trim();
+        if (query) {
+            performSearch(query);
+        }
+    }
+};
+
+// Выполнение поиска
+function performSearch(query) {
+    console.log('🔍 Поиск:', query);
+
+    if (!query || query.length < 2) {
+        showInfoNotification('Введите минимум 2 символа для поиска');
+        return;
+    }
+
+    // Фильтруем посты по запросу
+    const filteredPosts = allPosts.filter(post => {
+        const title = post.data.title.toLowerCase();
+        const text = (post.data.text || '').toLowerCase();
+        const author = post.data.author.toLowerCase();
+        const searchQuery = query.toLowerCase();
+
+        return title.includes(searchQuery) ||
+               text.includes(searchQuery) ||
+               author.includes(searchQuery);
+    });
+
+    if (filteredPosts.length === 0) {
+        showInfoNotification(`Посты по запросу "${query}" не найдены`);
+        return;
+    }
+
+    // Показываем результаты поиска
+    displaySearchResults(filteredPosts, query);
+    showSuccessNotification(`Найдено ${filteredPosts.length} постов по запросу "${query}"`);
+}
+
+// Отображение результатов поиска
+function displaySearchResults(posts, query) {
+    const postsContainer = document.getElementById('posts-container');
+    if (!postsContainer) return;
+
+    const originalPosts = [...allPosts];
+    allPosts = posts;
+
+    // Добавляем индикатор поиска
+    const searchIndicator = document.createElement('div');
+    searchIndicator.className = 'search-indicator';
+    searchIndicator.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--primary); color: white; padding: 12px 20px; border-radius: var(--radius-lg); margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <i class="fas fa-search"></i>
+                <span>Результаты поиска: "${query}"</span>
+            </div>
+            <button onclick="clearSearch()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: var(--radius-md); cursor: pointer;">
+                <i class="fas fa-times"></i> Очистить
+            </button>
+        </div>
+    `;
+
+    // Сохраняем оригинальный контент для восстановления
+    postsContainer.setAttribute('data-original-content', postsContainer.innerHTML);
+    postsContainer.setAttribute('data-search-query', query);
+
+    postsContainer.innerHTML = '';
+    postsContainer.appendChild(searchIndicator);
+
+    // Отображаем отфильтрованные посты
+    posts.forEach(post => {
+        const postCard = createPostCard(post.id, post.data);
+        postsContainer.appendChild(postCard);
+    });
+}
+
+// Очистка поиска
+window.clearSearch = function() {
+    const postsContainer = document.getElementById('posts-container');
+    if (!postsContainer) return;
+
+    const originalContent = postsContainer.getAttribute('data-original-content');
+    if (originalContent) {
+        postsContainer.innerHTML = originalContent;
+        postsContainer.removeAttribute('data-original-content');
+        postsContainer.removeAttribute('data-search-query');
+        showInfoNotification('Поиск очищен');
+    }
+};
+
+// Добавить уведомление
+function addNotification(type, title, message, duration = 5000) {
+    const notificationId = 'notif_' + Date.now() + Math.random().toString(36).substr(2, 9);
+    const notificationsContainer = document.getElementById('notifications');
+
+    if (!notificationsContainer) return;
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.id = notificationId;
+    notification.innerHTML = `
+        <div class="notification-header">
+            <div class="notification-icon">
+                <i class="fas fa-${getNotificationIcon(type)}"></i>
+            </div>
+            <div class="notification-title">${escapeHtml(title)}</div>
+        </div>
+        <div class="notification-message">${escapeHtml(message)}</div>
+        <div class="notification-time">${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+    `;
+
+    notificationsContainer.appendChild(notification);
+
+    // Показываем уведомление
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 100);
+
+    // Обновляем счетчик уведомлений
+    updateNotificationBadge();
+
+    // Автоматически скрываем уведомление
+    if (duration > 0) {
+        setTimeout(() => {
+            hideNotification(notificationId);
+        }, duration);
+    }
+
+    return notificationId;
+}
+
+// Скрыть уведомление
+function hideNotification(notificationId) {
+    const notification = document.getElementById(notificationId);
+    if (notification) {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+            updateNotificationBadge();
+        }, 300);
+    }
+}
+
+// Получить иконку для типа уведомления
+function getNotificationIcon(type) {
+    const icons = {
+        success: 'check-circle',
+        error: 'exclamation-circle',
+        warning: 'exclamation-triangle',
+        info: 'info-circle'
+    };
+    return icons[type] || 'info-circle';
+}
+
+// Обновить счетчик уведомлений
+function updateNotificationBadge() {
+    const badge = document.getElementById('notification-badge');
+    const notifications = document.querySelectorAll('.notification');
+    const count = notifications.length;
+
+    if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'flex' : 'none';
+    }
+}
+
+// Показать уведомление об успехе
+function showSuccessNotification(message, duration) {
+    return addNotification('success', 'Успешно', message, duration);
+}
+
+// Показать уведомление об ошибке
+function showErrorNotification(message, duration = 7000) {
+    return addNotification('error', 'Ошибка', message, duration);
+}
+
+// Показать уведомление с предупреждением
+function showWarningNotification(message, duration = 5000) {
+    return addNotification('warning', 'Предупреждение', message, duration);
+}
+
+// Показать информационное уведомление
+function showInfoNotification(message, duration = 4000) {
+    return addNotification('info', 'Информация', message, duration);
+}
+
 // ============ СИСТЕМА КОММЕНТАРИЕВ ============
 // Показать/скрыть комментарии
 window.toggleComments = function(postId) {
@@ -1452,9 +1659,17 @@ window.checkConnection = async function() {
         updateAdminUI();
     }
 
-    console.log('✅ Готово! Все данные обновляются в реальном времени');
+    // Скрываем экран загрузки
+    hideLoadingScreen();
+
+    console.log('✅ DevTalk готов! Все данные обновляются в реальном времени');
 
     // Показываем индикатор реального времени в консоли
     setInterval(() => {
-        console.log('🔄 Сайт работает в реальном времени - все данные синхронизированы');
+        console.log('🔄 DevTalk работает в реальном времени - все данные синхронизированы');
     }, 60000); // Каждую минуту
+
+    // Показываем приветственное уведомление
+    setTimeout(() => {
+        showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
+    }, 1000);

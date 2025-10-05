@@ -3,35 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reddit-Style Обсуждения</title>
+    <meta name="description" content="Современная платформа для обсуждений и общения">
+    <meta name="theme-color" content="#0079d3">
+
+    <!-- PWA Манифест -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Иконки для PWA -->
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+
+    <title>DevTalk - Платформа для обсуждений</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Service Worker для PWA -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then((registration) => {
+                        console.log('✅ Service Worker зарегистрирован:', registration);
+                    })
+                    .catch((error) => {
+                        console.log('❌ Ошибка регистрации Service Worker:', error);
+                    });
+            });
+        }
+    </script>
 </head>
 <body>
+    <!-- Индикатор загрузки -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2>Загрузка DevTalk...</h2>
+            <p>Подключение к серверу</p>
+        </div>
+    </div>
+
+    <!-- Уведомления -->
+    <div id="notifications" class="notifications"></div>
+
     <!-- Навбар -->
     <nav class="navbar">
         <div class="nav-container">
-        <div class="nav-left">
-            <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
-                <i class="fas fa-bars"></i>
-            </button>
-            <div class="logo">
-                <i class="fas fa-comments"></i>
-                <span>Обсуждения</span>
+            <div class="nav-left">
+                <button class="mobile-menu-btn" onclick="toggleMobileMenu()" title="Меню">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="logo" onclick="scrollToTop()">
+                    <i class="fas fa-comments"></i>
+                    <span>DevTalk</span>
+                </div>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-input" placeholder="Поиск по постам, авторам, тегам..." onkeydown="handleSearch(event)">
+                    <div class="search-suggestions" id="search-suggestions"></div>
+                </div>
             </div>
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" placeholder="Поиск...">
+            <div class="nav-center">
+                <div class="nav-stats">
+                    <span class="stat-item" title="Постов сегодня">
+                        <i class="fas fa-file-alt"></i>
+                        <span id="today-posts">0</span>
+                    </span>
+                    <span class="stat-item" title="Активных пользователей">
+                        <i class="fas fa-users"></i>
+                        <span id="active-users">0</span>
+                    </span>
+                </div>
             </div>
-        </div>
-        <div class="nav-right">
+            <div class="nav-right">
                 <button class="icon-btn" onclick="toggleTheme()" title="Сменить тему">
                     <i class="fas fa-moon" id="theme-icon"></i>
                 </button>
+                <div class="notification-btn" onclick="toggleNotifications()">
+                    <i class="fas fa-bell"></i>
+                    <span class="notification-badge" id="notification-badge">0</span>
+                </div>
                 <div class="online-badge">
                     <i class="fas fa-circle"></i>
                     <span id="online-count">0</span>
                 </div>
+                <button class="create-post-btn-nav" onclick="openPostModal()" title="Создать пост">
+                    <i class="fas fa-plus"></i>
+                </button>
             </div>
         </div>
     </nav>
