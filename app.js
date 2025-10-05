@@ -1496,29 +1496,108 @@ function updateCommentCount(postId, count) {
     }
 };
 
+// ============ ФУНКЦИИ ПРОГРЕССА ЗАГРУЗКИ ============
+function updateLoadingProgress(title, message) {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        const titleEl = loadingScreen.querySelector('h2');
+        const messageEl = loadingScreen.querySelector('p');
+
+        if (titleEl) titleEl.textContent = title;
+        if (messageEl) messageEl.textContent = message;
+    }
+}
+
+function showLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.style.display = 'flex';
+        loadingScreen.classList.remove('hidden');
+    }
+}
+
+// ============ ПРОВЕРКА ПОДКЛЮЧЕНИЯ К FIREBASE ============
+async function checkFirebaseConnection() {
+    try {
+        updateLoadingProgress('Проверка связи...', 'Проверка подключения к серверу...');
+
+        // Проверяем доступность Firebase
+        const testRef = ref(database, '.info/connected');
+        const connected = await new Promise((resolve) => {
+            const timeout = setTimeout(() => resolve(false), 5000);
+            const unsubscribe = onValue(testRef, (snapshot) => {
+                clearTimeout(timeout);
+                resolve(snapshot.val());
+                unsubscribe();
+            });
+        });
+
+        if (!connected) {
+            throw new Error('Сервер Firebase недоступен');
+        }
+
+        console.log('✅ Подключение к Firebase установлено');
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка подключения к Firebase:', error);
+        return false;
+    }
+}
+
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация с поддержкой реального времени...');
 
-    // Попытка инициализации с повторными попытками
+    // Показываем прогресс инициализации
+    updateLoadingProgress('Инициализация...', 'Подключение к базе данных...');
+
+    // Попытка инициализации с повторными попытками и таймаутом
     let retries = 3;
     let initialized = false;
+    const initTimeout = 15000; // 15 секунд таймаут
 
-    while (retries > 0 && !initialized) {
-        try {
-            await initFingerprint();
-            await initOnlineStatus();
-            initialized = true;
-            console.log('✅ Инициализация успешна - все данные обновляются в реальном времени');
-        } catch (error) {
-            console.error(`❌ Ошибка инициализации (попытка ${4 - retries}):`, error);
-            retries--;
+    const initPromise = new Promise(async (resolve, reject) => {
+        while (retries > 0 && !initialized) {
+            try {
+                updateLoadingProgress('Инициализация...', `Подключение к серверу (попытка ${4 - retries})...`);
 
-            if (retries > 0) {
-                console.log(`⏳ Повторная попытка через 2 секунды... (${retries} осталось)`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Проверяем подключение к Firebase перед инициализацией
+                const firebaseConnected = await checkFirebaseConnection();
+                if (!firebaseConnected) {
+                    throw new Error('Не удается подключиться к серверу Firebase');
+                }
+
+                await initFingerprint();
+                await initOnlineStatus();
+                initialized = true;
+                console.log('✅ Инициализация успешна - все данные обновляются в реальном времени');
+                resolve();
+            } catch (error) {
+                console.error(`❌ Ошибка инициализации (попытка ${4 - retries}):`, error);
+                retries--;
+
+                if (retries > 0) {
+                    updateLoadingProgress('Повторная попытка...', `Через 2 секунды (${retries} осталось)...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
+                    reject(error);
+                }
             }
         }
+    });
+
+    // Ждем инициализации или таймаута
+    try {
+        await Promise.race([
+            initPromise,
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Превышено время ожидания инициализации')), initTimeout)
+            )
+        ]);
+    } catch (error) {
+        console.error('❌ Не удалось инициализировать приложение:', error.message);
+        showConnectionError();
+        return;
     }
 
     if (!initialized) {
@@ -1532,27 +1611,70 @@ function showConnectionError() {
     const postsContainer = document.getElementById('posts-container');
     if (postsContainer) {
         postsContainer.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">
                 <i class="fas fa-exclamation-triangle" style="font-size: 48px; opacity: 0.5; margin-bottom: 20px; color: #ff9800;"></i>
                 <h3>Проблемы с подключением</h3>
-                <p>Не удается подключиться к серверу. Возможные причины:</p>
-                <ul style="text-align: left; max-width: 400px; margin: 15px auto; color: var(--text-secondary);">
-                    <li>Отсутствие интернет-соединения</li>
-                    <li>Блокировка Firebase в вашей сети</li>
-                    <li>Временные проблемы сервера</li>
-                </ul>
-                <div style="margin-top: 20px;">
-                    <button onclick="location.reload()" style="margin-right: 10px; padding: 10px 20px; background: var(--reddit-blue); color: white; border: none; border-radius: 20px; cursor: pointer;">
-                        Попробовать снова
+                <p style="margin-bottom: 20px;">Не удается подключиться к серверу DevTalk. Приложение будет работать в автономном режиме, но функциональность может быть ограничена.</p>
+
+                <div style="background: var(--bg-secondary); padding: 20px; border-radius: var(--radius-lg); margin-bottom: 20px;">
+                    <h4 style="margin-top: 0; color: var(--primary);">Возможные причины:</h4>
+                    <ul style="text-align: left; color: var(--text-secondary);">
+                        <li>Отсутствие интернет-соединения</li>
+                        <li>Блокировка Firebase в вашей сети или стране</li>
+                        <li>Временные проблемы сервера</li>
+                        <li>Превышено время ожидания ответа</li>
+                    </ul>
+                </div>
+
+                <div style="background: var(--accent); padding: 15px; border-radius: var(--radius-lg); margin-bottom: 20px;">
+                    <h4 style="margin-top: 0; color: var(--primary);">Что делать:</h4>
+                    <ol style="text-align: left; color: var(--text-secondary);">
+                        <li>Проверьте подключение к интернету</li>
+                        <li>Попробуйте использовать VPN, если Firebase заблокирован</li>
+                        <li>Подождите несколько минут и попробуйте снова</li>
+                        <li>Обратитесь к администратору, если проблема persists</li>
+                    </ol>
+                </div>
+
+                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <button onclick="location.reload()" style="padding: 12px 24px; background: var(--reddit-blue); color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-redo"></i> Попробовать снова
                     </button>
-                    <button onclick="checkConnection()" style="padding: 10px 20px; background: #666; color: white; border: none; border-radius: 20px; cursor: pointer;">
-                        Проверить связь
+                    <button onclick="checkConnection()" style="padding: 12px 24px; background: #666; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-wifi"></i> Проверить связь
+                    </button>
+                    <button onclick="showOfflineMode()" style="padding: 12px 24px; background: var(--accent); color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-plane"></i> Автономный режим
                     </button>
                 </div>
             </div>
         `;
     }
 }
+
+// Функция автономного режима
+window.showOfflineMode = function () {
+    const postsContainer = document.getElementById('posts-container');
+    if (postsContainer) {
+        postsContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <i class="fas fa-plane" style="font-size: 48px; opacity: 0.5; margin-bottom: 20px; color: var(--accent);"></i>
+                <h3>Автономный режим</h3>
+                <p>Приложение работает без подключения к серверу. Некоторые функции могут быть недоступны.</p>
+                <div style="margin-top: 20px;">
+                    <button onclick="location.reload()" style="padding: 10px 20px; background: var(--reddit-blue); color: white; border: none; border-radius: 20px; cursor: pointer;">
+                        Попробовать подключиться снова
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Скрываем экран загрузки
+    hideLoadingScreen();
+
+    showInfoNotification('Переход в автономный режим', 4000);
+};
 
 // Проверка подключения к интернету
 window.checkConnection = async function () {
@@ -1659,9 +1781,7 @@ if (usernameInput) {
     updateAdminUI();
 }
 
-// Скрываем экран загрузки
-hideLoadingScreen();
-
+// Экран загрузки скрывается автоматически после успешной инициализации
 console.log('✅ DevTalk готов! Все данные обновляются в реальном времени');
 
 // Показываем индикатор реального времени в консоли
