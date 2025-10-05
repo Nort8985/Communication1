@@ -303,11 +303,13 @@ window.submitPost = async function() {
     }
 };
 
-// ============ ЗАГРУЗКА ПОСТОВ ============
+// ============ РЕАЛЬНО-ВРЕМЕННАЯ ЗАГРУЗКА ПОСТОВ ============
 onValue(postsRef, (snapshot) => {
+    console.log('📡 Обновление постов в реальном времени');
+
     const postsContainer = document.getElementById('posts-container');
     if (!postsContainer) return;
-    
+
     allPosts = [];
 
     if (!snapshot.exists()) {
@@ -344,15 +346,16 @@ function updateStats(postsCount, likesCount) {
     if (statLikes) statLikes.textContent = likesCount;
 }
 
-// Статистика пользователей
+// ============ РЕАЛЬНО-ВРЕМЕННАЯ СТАТИСТИКА ПОЛЬЗОВАТЕЛЕЙ ============
 onValue(ref(database, 'users'), (snapshot) => {
+    console.log('📡 Обновление статистики пользователей');
     const count = snapshot.exists() ? snapshot.size : 0;
     const usersCountEl = document.getElementById('users-count');
     if (usersCountEl) usersCountEl.textContent = count;
-    
+
     const usersCountMobile = document.getElementById('users-count-mobile');
     if (usersCountMobile) usersCountMobile.textContent = count;
-    
+
     const statUsers = document.getElementById('stat-users');
     if (statUsers) statUsers.textContent = count;
 });
@@ -566,23 +569,29 @@ function loadDashboard() {
 }
 
 async function loadStatistics() {
-    const bansSnapshot = await get(ref(database, 'bans'));
-    const mutesSnapshot = await get(ref(database, 'mutes'));
-    
-    const bansCount = bansSnapshot.exists() ? bansSnapshot.size : 0;
-    const mutesCount = mutesSnapshot.exists() ? mutesSnapshot.size : 0;
-    
-    const statBans = document.getElementById('stat-bans');
-    if (statBans) statBans.textContent = bansCount;
-    
-    const statMutes = document.getElementById('stat-mutes');
-    if (statMutes) statMutes.textContent = mutesCount;
-    
-    const badgeBans = document.getElementById('badge-bans');
-    if (badgeBans) badgeBans.textContent = bansCount;
-    
-    const badgeMutes = document.getElementById('badge-mutes');
-    if (badgeMutes) badgeMutes.textContent = mutesCount;
+    console.log('📡 Загрузка статистики модерации');
+
+    // ============ РЕАЛЬНО-ВРЕМЕННАЯ СТАТИСТИКА БАНОВ ============
+    onValue(ref(database, 'bans'), (snapshot) => {
+        const bansCount = snapshot.exists() ? snapshot.size : 0;
+
+        const statBans = document.getElementById('stat-bans');
+        if (statBans) statBans.textContent = bansCount;
+
+        const badgeBans = document.getElementById('badge-bans');
+        if (badgeBans) badgeBans.textContent = bansCount;
+    });
+
+    // ============ РЕАЛЬНО-ВРЕМЕННАЯ СТАТИСТИКА МУТОВ ============
+    onValue(ref(database, 'mutes'), (snapshot) => {
+        const mutesCount = snapshot.exists() ? snapshot.size : 0;
+
+        const statMutes = document.getElementById('stat-mutes');
+        if (statMutes) statMutes.textContent = mutesCount;
+
+        const badgeMutes = document.getElementById('badge-mutes');
+        if (badgeMutes) badgeMutes.textContent = mutesCount;
+    });
 }
 
 async function loadRecentActivity() {
@@ -1058,8 +1067,10 @@ window.toggleComments = function(postId) {
     }
 };
 
-// Загрузка комментариев для поста
+// ============ РЕАЛЬНО-ВРЕМЕННАЯ ЗАГРУЗКА КОММЕНТАРИЕВ ============
 function loadComments(postId) {
+    console.log(`📡 Загрузка комментариев для поста ${postId}`);
+
     const commentsContainer = document.getElementById(`comments-container-${postId}`);
     if (!commentsContainer) return;
 
@@ -1073,7 +1084,7 @@ function loadComments(postId) {
     );
 
     onValue(postCommentsRef, (snapshot) => {
-        commentsContainer.innerHTML = '';
+        console.log(`📡 Обновление комментариев для поста ${postId} в реальном времени`);
 
         if (!snapshot.exists()) {
             commentsContainer.innerHTML = '<div class="no-comments">Комментариев пока нет. Будьте первым!</div>';
@@ -1101,13 +1112,15 @@ function loadComments(postId) {
         // Сортируем комментарии по времени
         comments.sort((a, b) => a.data.timestamp - b.data.timestamp);
 
+        // Очищаем контейнер и добавляем комментарии
+        commentsContainer.innerHTML = '';
         comments.forEach(comment => {
             const commentElement = createCommentElement(comment.id, comment.data, postId);
             commentsContainer.appendChild(commentElement);
         });
 
         updateCommentCount(postId, comments.length);
-    }, { onlyOnce: true });
+    });
 }
 
 // Создание элемента комментария
@@ -1278,7 +1291,7 @@ function updateCommentCount(postId, count) {
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('🚀 Инициализация...');
+    console.log('🚀 Инициализация с поддержкой реального времени...');
 
     // Попытка инициализации с повторными попытками
     let retries = 3;
@@ -1289,7 +1302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await initFingerprint();
             await initOnlineStatus();
             initialized = true;
-            console.log('✅ Инициализация успешна');
+            console.log('✅ Инициализация успешна - все данные обновляются в реальном времени');
         } catch (error) {
             console.error(`❌ Ошибка инициализации (попытка ${4 - retries}):`, error);
             retries--;
@@ -1439,4 +1452,9 @@ window.checkConnection = async function() {
         updateAdminUI();
     }
 
-    console.log('✅ Готово!');
+    console.log('✅ Готово! Все данные обновляются в реальном времени');
+
+    // Показываем индикатор реального времени в консоли
+    setInterval(() => {
+        console.log('🔄 Сайт работает в реальном времени - все данные синхронизированы');
+    }, 60000); // Каждую минуту
