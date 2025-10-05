@@ -13,6 +13,26 @@ const firebaseConfig = {
     measurementId: "G-CYKP3568TT"
 };
 
+// Правила базы данных для публичного доступа
+const databaseRules = {
+    rules: {
+        ".read": true,
+        ".write": true,
+        "posts": {
+            ".indexOn": ["timestamp", "author"]
+        },
+        "comments": {
+            ".indexOn": ["postId", "timestamp"]
+        },
+        "users": {
+            ".indexOn": ["lastSeen"]
+        },
+        "online": {
+            ".indexOn": ["timestamp"]
+        }
+    }
+};
+
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const postsRef = ref(database, 'posts');
@@ -1260,8 +1280,101 @@ function updateCommentCount(postId, count) {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация...');
 
-    await initFingerprint();
-    await initOnlineStatus();
+    // Попытка инициализации с повторными попытками
+    let retries = 3;
+    let initialized = false;
+
+    while (retries > 0 && !initialized) {
+        try {
+            await initFingerprint();
+            await initOnlineStatus();
+            initialized = true;
+            console.log('✅ Инициализация успешна');
+        } catch (error) {
+            console.error(`❌ Ошибка инициализации (попытка ${4 - retries}):`, error);
+            retries--;
+
+            if (retries > 0) {
+                console.log(`⏳ Повторная попытка через 2 секунды... (${retries} осталось)`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    }
+
+    if (!initialized) {
+        console.error('❌ Не удалось инициализировать приложение после нескольких попыток');
+        showConnectionError();
+    }
+});
+
+// Показать ошибку подключения
+function showConnectionError() {
+    const postsContainer = document.getElementById('posts-container');
+    if (postsContainer) {
+        postsContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <i class="fas fa-exclamation-triangle" style="font-size: 48px; opacity: 0.5; margin-bottom: 20px; color: #ff9800;"></i>
+                <h3>Проблемы с подключением</h3>
+                <p>Не удается подключиться к серверу. Возможные причины:</p>
+                <ul style="text-align: left; max-width: 400px; margin: 15px auto; color: var(--text-secondary);">
+                    <li>Отсутствие интернет-соединения</li>
+                    <li>Блокировка Firebase в вашей сети</li>
+                    <li>Временные проблемы сервера</li>
+                </ul>
+                <div style="margin-top: 20px;">
+                    <button onclick="location.reload()" style="margin-right: 10px; padding: 10px 20px; background: var(--reddit-blue); color: white; border: none; border-radius: 20px; cursor: pointer;">
+                        Попробовать снова
+                    </button>
+                    <button onclick="checkConnection()" style="padding: 10px 20px; background: #666; color: white; border: none; border-radius: 20px; cursor: pointer;">
+                        Проверить связь
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Проверка подключения к интернету
+window.checkConnection = async function() {
+    const postsContainer = document.getElementById('posts-container');
+    if (!postsContainer) return;
+
+    // Показываем индикатор проверки
+    postsContainer.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            <i class="fas fa-spinner fa-spin" style="font-size: 48px; margin-bottom: 20px;"></i>
+            <h3>Проверка подключения...</h3>
+        </div>
+    `;
+
+    try {
+        // Проверяем подключение к Firebase
+        const testRef = ref(database, '.info/connected');
+        const connected = await new Promise((resolve) => {
+            const unsubscribe = onValue(testRef, (snapshot) => {
+                resolve(snapshot.val());
+                unsubscribe();
+            });
+        });
+
+        if (connected) {
+            location.reload();
+        } else {
+            throw new Error('Нет подключения к Firebase');
+        }
+    } catch (error) {
+        postsContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <i class="fas fa-times-circle" style="font-size: 48px; opacity: 0.5; margin-bottom: 20px; color: #f44336;"></i>
+                <h3>Подключение недоступно</h3>
+                <p>Проверьте интернет-соединение и попробуйте позже</p>
+                <button onclick="checkConnection()" style="margin-top: 15px; padding: 10px 20px; background: var(--reddit-blue); color: white; border: none; border-radius: 20px; cursor: pointer;">
+                    Проверить снова
+                </button>
+            </div>
+        `;
+    }
+};
 
     const usernameInput = document.getElementById('username');
     if (usernameInput) {
@@ -1327,4 +1440,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     console.log('✅ Готово!');
-});
