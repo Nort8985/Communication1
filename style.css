@@ -2926,6 +2926,38 @@ button, .icon-btn, .sort-btn, .action-btn {
     color: var(--text-primary);
 }
 
+.chats-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.refresh-chats-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.refresh-chats-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .new-chat-btn {
     background: var(--primary);
     color: white;
@@ -3309,6 +3341,22 @@ button, .icon-btn, .sort-btn, .action-btn {
 
     .chats-header h3 {
         font-size: 16px;
+    }
+
+    .chats-header-actions {
+        gap: 6px;
+    }
+
+    .refresh-chats-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+    }
+
+    .new-chat-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+        min-height: 32px;
     }
 
     .chat-item {

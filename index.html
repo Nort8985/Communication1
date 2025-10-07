@@ -277,9 +277,14 @@
                 <div class="chats-sidebar">
                     <div class="chats-header">
                         <h3>Ваши чаты</h3>
-                        <button class="new-chat-btn" onclick="openNewChatModal()">
-                            <i class="fas fa-plus"></i> Новый чат
-                        </button>
+                        <div class="chats-header-actions">
+                            <button class="refresh-chats-btn" onclick="refreshChats()" title="Обновить чаты">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="new-chat-btn" onclick="openNewChatModal()">
+                                <i class="fas fa-plus"></i> Новый чат
+                            </button>
+                        </div>
                     </div>
                     <div id="chats-list" class="chats-list">
                         <!-- Чаты будут загружаться здесь -->

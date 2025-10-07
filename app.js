@@ -298,13 +298,22 @@ window.closeChatsModal = function () {
     document.getElementById('chats-modal').classList.remove('show');
     currentChatId = null;
 
-    // Очищаем все слушатели чатов
+    // Очищаем все слушатели чатов и fallback интервалы
     chatListeners.forEach(unsubscribe => {
         if (typeof unsubscribe === 'function') {
-            unsubscribe();
+            try {
+                unsubscribe();
+            } catch (error) {
+                console.warn('Ошибка при очистке слушателя:', error);
+            }
         }
     });
     chatListeners = [];
+
+    // Сбрасываем счетчики непрочитанных сообщений
+    unreadMessages = {};
+
+    console.log('✅ Модальное окно чатов закрыто, все слушатели очищены');
 };
 
 window.openNewChatModal = function () {
@@ -316,6 +325,25 @@ window.closeNewChatModal = function () {
     document.getElementById('chat-participant').value = '';
 };
 
+// Ручное обновление чатов
+window.refreshChats = function () {
+    console.log('🔄 Ручное обновление чатов');
+    const refreshBtn = document.querySelector('.refresh-chats-btn i');
+    if (refreshBtn) {
+        refreshBtn.style.animation = 'spin 1s linear';
+        setTimeout(() => {
+            refreshBtn.style.animation = '';
+        }, 1000);
+    }
+
+    loadUserChats();
+    if (currentChatId) {
+        loadChatMessages(currentChatId);
+    }
+
+    showInfoNotification('Чаты обновлены', 2000);
+};
+
 // Загрузка чатов пользователя
 function loadUserChats() {
     const username = document.getElementById('username')?.value.trim();
@@ -324,13 +352,20 @@ function loadUserChats() {
     // Очищаем предыдущие слушатели
     chatListeners.forEach(unsubscribe => {
         if (typeof unsubscribe === 'function') {
-            unsubscribe();
+            try {
+                unsubscribe();
+            } catch (error) {
+                console.warn('Ошибка при очистке слушателя:', error);
+            }
         }
     });
     chatListeners = [];
 
+    console.log('🔄 Устанавливаем слушатели чатов для пользователя:', username);
+
     // Устанавливаем постоянный слушатель для обновления чатов в реальном времени
     const unsubscribeChats = onValue(chatsRef, (snapshot) => {
+        console.log('📡 Обновление списка чатов в реальном времени');
         const chatsList = document.getElementById('chats-list');
         if (!chatsList) return;
 
@@ -360,6 +395,8 @@ function loadUserChats() {
             const chatItem = createChatItem(chat.id, chat.data, username, unreadCount);
             chatsList.appendChild(chatItem);
         });
+    }, (error) => {
+        console.error('❌ Ошибка слушателя чатов:', error);
     });
 
     // Сохраняем функцию отписки
@@ -367,6 +404,7 @@ function loadUserChats() {
 
     // Добавляем глобальный слушатель для всех сообщений (для уведомлений о новых сообщениях)
     const unsubscribeAllMessages = onValue(messagesRef, (snapshot) => {
+        console.log('📡 Обновление сообщений в реальном времени');
         const currentUsername = document.getElementById('username')?.value.trim();
         if (!currentUsername) return;
 
@@ -394,10 +432,91 @@ function loadUserChats() {
         }
 
         unreadMessages = newUnreadMessages;
+    }, (error) => {
+        console.error('❌ Ошибка слушателя сообщений:', error);
     });
 
     // Сохраняем слушатель всех сообщений
     chatListeners.push(unsubscribeAllMessages);
+
+    // Добавляем периодическую проверку подключения (для десктопа)
+    setTimeout(() => {
+        if (chatListeners.length === 0) {
+            console.warn('⚠️ Слушатели чатов не установлены, повторная попытка...');
+            loadUserChats();
+        }
+    }, 2000);
+
+    // Добавляем fallback механизм для случаев, когда realtime не работает
+    let lastChatUpdate = Date.now();
+    let lastMessageUpdate = Date.now();
+
+    // Проверяем обновления чатов каждые 10 секунд (fallback)
+    const chatFallbackInterval = setInterval(async () => {
+        if (document.getElementById('chats-modal')?.classList.contains('show')) {
+            try {
+                const snapshot = await get(chatsRef);
+                if (snapshot.exists()) {
+                    const currentTime = Date.now();
+                    let hasNewData = false;
+
+                    snapshot.forEach(child => {
+                        const chat = child.val();
+                        if (chat.lastMessage && chat.lastMessage > lastChatUpdate) {
+                            hasNewData = true;
+                        }
+                    });
+
+                    if (hasNewData) {
+                        console.log('🔄 Fallback: обнаружены новые данные чатов');
+                        lastChatUpdate = currentTime;
+                        // Принудительно обновляем чаты
+                        loadUserChats();
+                    }
+                }
+            } catch (error) {
+                console.warn('Fallback проверка чатов не удалась:', error);
+            }
+        }
+    }, 10000);
+
+    // Проверяем обновления сообщений каждые 5 секунд (fallback)
+    const messageFallbackInterval = setInterval(async () => {
+        if (currentChatId && document.getElementById('chats-modal')?.classList.contains('show')) {
+            try {
+                const snapshot = await get(messagesRef);
+                if (snapshot.exists()) {
+                    const currentTime = Date.now();
+                    let hasNewMessages = false;
+
+                    snapshot.forEach(child => {
+                        const message = child.val();
+                        if (message.chatId === currentChatId && message.timestamp > lastMessageUpdate) {
+                            hasNewMessages = true;
+                        }
+                    });
+
+                    if (hasNewMessages) {
+                        console.log('🔄 Fallback: обнаружены новые сообщения');
+                        lastMessageUpdate = currentTime;
+                        // Принудительно обновляем сообщения
+                        loadChatMessages(currentChatId);
+                    }
+                }
+            } catch (error) {
+                console.warn('Fallback проверка сообщений не удалась:', error);
+            }
+        }
+    }, 5000);
+
+    // Очищаем интервалы при закрытии модального окна
+    const clearFallbacks = () => {
+        clearInterval(chatFallbackInterval);
+        clearInterval(messageFallbackInterval);
+    };
+
+    // Сохраняем функцию очистки fallback'ов
+    chatListeners.push(clearFallbacks);
 }
 
 // Создание элемента чата в списке
@@ -1152,7 +1271,11 @@ function openChat(chatId) {
     if (chatListeners.length > 1) {
         for (let i = chatListeners.length - 1; i >= 1; i--) {
             if (typeof chatListeners[i] === 'function') {
-                chatListeners[i]();
+                try {
+                    chatListeners[i]();
+                } catch (error) {
+                    console.warn('Ошибка при очистке слушателя сообщений:', error);
+                }
             }
             chatListeners.splice(i, 1);
         }
@@ -1210,8 +1333,9 @@ function loadChatMessages(chatId) {
     }
 
     // Устанавливаем постоянный слушатель для сообщений этого чата
-    const chatMessagesRef = query(messagesRef, orderByChild('chatId'));
-    const unsubscribeMessages = onValue(chatMessagesRef, (snapshot) => {
+    const chatMessagesQuery = query(messagesRef, orderByChild('chatId'));
+    const unsubscribeMessages = onValue(chatMessagesQuery, (snapshot) => {
+        console.log(`📡 Обновление сообщений чата ${chatId} в реальном времени`);
         const messagesContainer = document.getElementById(`chat-messages-${chatId}`);
         if (!messagesContainer) return;
 
@@ -1244,6 +1368,8 @@ function loadChatMessages(chatId) {
 
         // Прокручиваем к последнему сообщению
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }, (error) => {
+        console.error(`❌ Ошибка слушателя сообщений чата ${chatId}:`, error);
     });
 
     // Сохраняем функцию отписки для сообщений
@@ -1311,6 +1437,14 @@ window.sendMessage = async function (chatId) {
         messageInput.value = '';
 
         console.log('✅ Сообщение отправлено!');
+
+        // Принудительно обновляем чат после отправки (для надежности)
+        setTimeout(() => {
+            if (currentChatId === chatId) {
+                loadChatMessages(chatId);
+            }
+        }, 500);
+
         await recordUserActivity();
     } catch (error) {
         console.error('❌ Ошибка отправки сообщения:', error);
@@ -1933,6 +2067,9 @@ async function checkFirebaseConnection() {
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация с поддержкой реального времени...');
+    console.log('📱 Платформа:', navigator.platform);
+    console.log('🌐 User Agent:', navigator.userAgent);
+    console.log('🔗 Online:', navigator.onLine);
 
     // Попытка инициализации с повторными попытками и таймаутом
     let retries = 3;
@@ -2235,4 +2372,25 @@ window.addEventListener('resize', function() {
             }, 300);
         }
     }
+});
+
+// Обработка сетевых событий для лучшей работы realtime
+window.addEventListener('online', function() {
+    console.log('🌐 Подключение к интернету восстановлено');
+    showSuccessNotification('Подключение восстановлено', 2000);
+
+    // Переподключаем слушатели при восстановлении связи
+    if (document.getElementById('chats-modal')?.classList.contains('show')) {
+        setTimeout(() => {
+            loadUserChats();
+            if (currentChatId) {
+                loadChatMessages(currentChatId);
+            }
+        }, 1000);
+    }
+});
+
+window.addEventListener('offline', function() {
+    console.log('📴 Потеряно подключение к интернету');
+    showWarningNotification('Подключение потеряно. Работа в автономном режиме', 3000);
 });
