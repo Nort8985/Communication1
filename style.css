@@ -3343,3 +3343,26 @@ button, .icon-btn, .sort-btn, .action-btn {
         font-size: 14px;
     }
 }
+
+/* Индикатор непрочитанных сообщений */
+.unread-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--error);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 18px;
+    height: 18px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--bg-card);
+    animation: pulse 2s infinite;
+}
+
+.chat-avatar {
+    position: relative;
+}

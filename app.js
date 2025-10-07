@@ -60,6 +60,8 @@ let notificationTimeout = null;
 let currentChatId = null;
 let allChats = [];
 let chatMessages = {};
+let chatListeners = []; // Для хранения слушателей чатов
+let unreadMessages = {}; // Для отслеживания непрочитанных сообщений
 
 // ============ FINGERPRINT ============
 async function initFingerprint() {
@@ -295,6 +297,14 @@ window.toggleChats = function () {
 window.closeChatsModal = function () {
     document.getElementById('chats-modal').classList.remove('show');
     currentChatId = null;
+
+    // Очищаем все слушатели чатов
+    chatListeners.forEach(unsubscribe => {
+        if (typeof unsubscribe === 'function') {
+            unsubscribe();
+        }
+    });
+    chatListeners = [];
 };
 
 window.openNewChatModal = function () {
@@ -311,7 +321,16 @@ function loadUserChats() {
     const username = document.getElementById('username')?.value.trim();
     if (!username) return;
 
-    onValue(chatsRef, (snapshot) => {
+    // Очищаем предыдущие слушатели
+    chatListeners.forEach(unsubscribe => {
+        if (typeof unsubscribe === 'function') {
+            unsubscribe();
+        }
+    });
+    chatListeners = [];
+
+    // Устанавливаем постоянный слушатель для обновления чатов в реальном времени
+    const unsubscribeChats = onValue(chatsRef, (snapshot) => {
         const chatsList = document.getElementById('chats-list');
         if (!chatsList) return;
 
@@ -337,14 +356,52 @@ function loadUserChats() {
         allChats.sort((a, b) => (b.data.lastMessage || 0) - (a.data.lastMessage || 0));
 
         allChats.forEach(chat => {
-            const chatItem = createChatItem(chat.id, chat.data, username);
+            const unreadCount = unreadMessages[chat.id] || 0;
+            const chatItem = createChatItem(chat.id, chat.data, username, unreadCount);
             chatsList.appendChild(chatItem);
         });
-    }, { onlyOnce: true });
+    });
+
+    // Сохраняем функцию отписки
+    chatListeners.push(unsubscribeChats);
+
+    // Добавляем глобальный слушатель для всех сообщений (для уведомлений о новых сообщениях)
+    const unsubscribeAllMessages = onValue(messagesRef, (snapshot) => {
+        const currentUsername = document.getElementById('username')?.value.trim();
+        if (!currentUsername) return;
+
+        // Сбрасываем счетчики непрочитанных
+        const newUnreadMessages = {};
+
+        if (snapshot.exists()) {
+            snapshot.forEach(child => {
+                const message = child.val();
+                const chat = allChats.find(c => c.id === message.chatId);
+
+                if (chat && chat.data.participants.includes(currentUsername) && message.author !== currentUsername) {
+                    // Это сообщение для нас в одном из наших чатов
+                    if (message.chatId !== currentChatId) {
+                        // Чат не открыт, увеличиваем счетчик непрочитанных
+                        newUnreadMessages[message.chatId] = (newUnreadMessages[message.chatId] || 0) + 1;
+
+                        // Показываем уведомление о новом сообщении
+                        if (message.timestamp > (Date.now() - 5000)) { // Сообщение не старше 5 секунд
+                            showInfoNotification(`Новое сообщение от ${escapeHtml(message.author)}`, 3000);
+                        }
+                    }
+                }
+            });
+        }
+
+        unreadMessages = newUnreadMessages;
+    });
+
+    // Сохраняем слушатель всех сообщений
+    chatListeners.push(unsubscribeAllMessages);
 }
 
 // Создание элемента чата в списке
-function createChatItem(chatId, chatData, currentUsername) {
+function createChatItem(chatId, chatData, currentUsername, unreadCount = 0) {
     const div = document.createElement('div');
     div.className = `chat-item ${currentChatId === chatId ? 'active' : ''}`;
     div.onclick = () => openChat(chatId);
@@ -355,6 +412,7 @@ function createChatItem(chatId, chatData, currentUsername) {
     div.innerHTML = `
         <div class="chat-avatar">
             <i class="fas fa-user-circle"></i>
+            ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
         </div>
         <div class="chat-info">
             <div class="chat-name">${escapeHtml(otherParticipant)}</div>
@@ -406,7 +464,7 @@ window.createNewChat = async function () {
         await push(chatsRef, newChat);
         console.log('✅ Чат создан!');
         closeNewChatModal();
-        loadUserChats();
+        // Чат автоматически появится благодаря слушателю onValue
     } catch (error) {
         console.error('❌ Ошибка создания чата:', error);
         alert('Ошибка: ' + error.message);
@@ -1090,6 +1148,16 @@ function openChat(chatId) {
     });
     event?.target?.closest('.chat-item')?.classList.add('active');
 
+    // Очищаем предыдущие слушатели сообщений (оставляем только слушатель чатов)
+    if (chatListeners.length > 1) {
+        for (let i = chatListeners.length - 1; i >= 1; i--) {
+            if (typeof chatListeners[i] === 'function') {
+                chatListeners[i]();
+            }
+            chatListeners.splice(i, 1);
+        }
+    }
+
     loadChatMessages(chatId);
 }
 
@@ -1107,9 +1175,46 @@ function loadChatMessages(chatId) {
     const currentUsername = document.getElementById('username')?.value.trim();
     const otherParticipant = chat.data.participants.find(p => p !== currentUsername) || 'Неизвестный';
 
-    // Загружаем сообщения
+    // Создаем интерфейс чата
+    chatWindow.innerHTML = `
+        <div class="chat-header">
+            <div class="chat-participant">
+                <i class="fas fa-user-circle"></i>
+                <span>${escapeHtml(otherParticipant)}</span>
+            </div>
+            <button class="close-chat-btn" onclick="closeCurrentChat()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="chat-messages" id="chat-messages-${chatId}">
+            <div class="no-messages"><i class="fas fa-comments"></i><p>Нет сообщений. Начните разговор!</p></div>
+        </div>
+        <div class="chat-input">
+            <input type="text" id="message-input-${chatId}" placeholder="Напишите сообщение..." class="message-input">
+            <button class="send-message-btn" onclick="sendMessage('${chatId}')">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    `;
+
+    // Добавляем обработчик Enter для отправки
+    const messageInput = document.getElementById(`message-input-${chatId}`);
+    if (messageInput) {
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(chatId);
+            }
+        });
+        messageInput.focus();
+    }
+
+    // Устанавливаем постоянный слушатель для сообщений этого чата
     const chatMessagesRef = query(messagesRef, orderByChild('chatId'));
-    onValue(chatMessagesRef, (snapshot) => {
+    const unsubscribeMessages = onValue(chatMessagesRef, (snapshot) => {
+        const messagesContainer = document.getElementById(`chat-messages-${chatId}`);
+        if (!messagesContainer) return;
+
         const messages = [];
 
         if (snapshot.exists()) {
@@ -1127,49 +1232,22 @@ function loadChatMessages(chatId) {
         // Сортируем сообщения по времени
         messages.sort((a, b) => a.data.timestamp - b.data.timestamp);
 
-        // Создаем интерфейс чата
-        chatWindow.innerHTML = `
-            <div class="chat-header">
-                <div class="chat-participant">
-                    <i class="fas fa-user-circle"></i>
-                    <span>${escapeHtml(otherParticipant)}</span>
-                </div>
-                <button class="close-chat-btn" onclick="closeCurrentChat()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="chat-messages" id="chat-messages-${chatId}">
-                ${messages.length === 0 ?
-                    '<div class="no-messages"><i class="fas fa-comments"></i><p>Нет сообщений. Начните разговор!</p></div>' :
-                    messages.map(msg => createMessageElement(msg.id, msg.data, currentUsername)).join('')
-                }
-            </div>
-            <div class="chat-input">
-                <input type="text" id="message-input-${chatId}" placeholder="Напишите сообщение..." class="message-input">
-                <button class="send-message-btn" onclick="sendMessage('${chatId}')">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-        `;
+        // Обновляем сообщения
+        if (messages.length === 0) {
+            messagesContainer.innerHTML = '<div class="no-messages"><i class="fas fa-comments"></i><p>Нет сообщений. Начните разговор!</p></div>';
+        } else {
+            messagesContainer.innerHTML = messages.map(msg => createMessageElement(msg.id, msg.data, currentUsername)).join('');
+        }
+
+        // Отмечаем сообщения как прочитанные
+        unreadMessages[chatId] = 0;
 
         // Прокручиваем к последнему сообщению
-        const messagesContainer = document.getElementById(`chat-messages-${chatId}`);
-        if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    });
 
-        // Добавляем обработчик Enter для отправки
-        const messageInput = document.getElementById(`message-input-${chatId}`);
-        if (messageInput) {
-            messageInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage(chatId);
-                }
-            });
-            messageInput.focus();
-        }
-    }, { onlyOnce: true });
+    // Сохраняем функцию отписки для сообщений
+    chatListeners.push(unsubscribeMessages);
 }
 
 // Создание элемента сообщения
