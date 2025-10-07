@@ -84,6 +84,9 @@
                 <button class="create-post-btn-nav" onclick="openPostModal()" title="Создать пост">
                     <i class="fas fa-plus"></i>
                 </button>
+                <button class="icon-btn" onclick="toggleChats()" title="Личные чаты">
+                    <i class="fas fa-comments"></i>
+                </button>
             </div>
         </div>
     </nav>
@@ -249,6 +252,63 @@
                     <button class="cancel-btn" onclick="closePostModal()">Отмена</button>
                     <button class="submit-btn" onclick="submitPost()">
                         <i class="fas fa-paper-plane"></i> Опубликовать
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО ЧАТОВ -->
+    <div id="chats-modal" class="chats-modal">
+        <div class="chats-modal-content">
+            <div class="chats-modal-header">
+                <h2><i class="fas fa-comments"></i> Личные чаты</h2>
+                <button class="close-btn" onclick="closeChatsModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="chats-content">
+                <!-- Список чатов -->
+                <div class="chats-sidebar">
+                    <div class="chats-header">
+                        <h3>Ваши чаты</h3>
+                        <button class="new-chat-btn" onclick="openNewChatModal()">
+                            <i class="fas fa-plus"></i> Новый чат
+                        </button>
+                    </div>
+                    <div id="chats-list" class="chats-list">
+                        <!-- Чаты будут загружаться здесь -->
+                    </div>
+                </div>
+
+                <!-- Окно чата -->
+                <div class="chat-window" id="chat-window">
+                    <div class="chat-placeholder">
+                        <i class="fas fa-comments"></i>
+                        <h3>Выберите чат</h3>
+                        <p>Выберите чат из списка слева или создайте новый</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО СОЗДАНИЯ НОВОГО ЧАТА -->
+    <div id="new-chat-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Создать новый чат</h2>
+                <button class="close-btn" onclick="closeNewChatModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="chat-participant" placeholder="Имя пользователя" class="chat-participant-input">
+                <div class="modal-actions">
+                    <button class="cancel-btn" onclick="closeNewChatModal()">Отмена</button>
+                    <button class="submit-btn" onclick="createNewChat()">
+                        <i class="fas fa-plus"></i> Создать чат
                     </button>
                 </div>
             </div>

@@ -29,6 +29,12 @@ const databaseRules = {
         },
         "online": {
             ".indexOn": ["timestamp"]
+        },
+        "chats": {
+            ".indexOn": ["participants", "lastMessage", "timestamp"]
+        },
+        "messages": {
+            ".indexOn": ["chatId", "timestamp"]
         }
     }
 };
@@ -37,6 +43,8 @@ const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const postsRef = ref(database, 'posts');
 const commentsRef = ref(database, 'comments');
+const chatsRef = ref(database, 'chats');
+const messagesRef = ref(database, 'messages');
 
 // ============ ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ============
 let userFingerprint = null;
@@ -47,6 +55,11 @@ let allPosts = [];
 let currentAdminTab = 'dashboard';
 let notifications = [];
 let notificationTimeout = null;
+
+// ============ ЧАТЫ ============
+let currentChatId = null;
+let allChats = [];
+let chatMessages = {};
 
 // ============ FINGERPRINT ============
 async function initFingerprint() {
@@ -260,6 +273,144 @@ window.openAdminPanel = function () {
 
 window.closeAdminPanel = function () {
     document.getElementById('admin-modal').classList.remove('show');
+};
+
+// ============ ФУНКЦИИ ЧАТОВ ============
+window.toggleChats = function () {
+    if (!fingerprintReady) {
+        alert('⏳ Загрузка... Попробуйте через секунду');
+        return;
+    }
+
+    const username = document.getElementById('username')?.value.trim();
+    if (!username) {
+        alert('Введите ваше имя!');
+        return;
+    }
+
+    document.getElementById('chats-modal').classList.add('show');
+    loadUserChats();
+};
+
+window.closeChatsModal = function () {
+    document.getElementById('chats-modal').classList.remove('show');
+    currentChatId = null;
+};
+
+window.openNewChatModal = function () {
+    document.getElementById('new-chat-modal').classList.add('show');
+};
+
+window.closeNewChatModal = function () {
+    document.getElementById('new-chat-modal').classList.remove('show');
+    document.getElementById('chat-participant').value = '';
+};
+
+// Загрузка чатов пользователя
+function loadUserChats() {
+    const username = document.getElementById('username')?.value.trim();
+    if (!username) return;
+
+    onValue(chatsRef, (snapshot) => {
+        const chatsList = document.getElementById('chats-list');
+        if (!chatsList) return;
+
+        chatsList.innerHTML = '';
+
+        if (!snapshot.exists()) {
+            chatsList.innerHTML = '<div class="no-chats"><i class="fas fa-comments"></i><h4>Нет чатов</h4><p>Создайте свой первый чат</p></div>';
+            return;
+        }
+
+        allChats = [];
+        snapshot.forEach(child => {
+            const chat = child.val();
+            if (chat.participants && chat.participants.includes(username)) {
+                allChats.push({
+                    id: child.key,
+                    data: chat
+                });
+            }
+        });
+
+        // Сортируем чаты по последнему сообщению
+        allChats.sort((a, b) => (b.data.lastMessage || 0) - (a.data.lastMessage || 0));
+
+        allChats.forEach(chat => {
+            const chatItem = createChatItem(chat.id, chat.data, username);
+            chatsList.appendChild(chatItem);
+        });
+    }, { onlyOnce: true });
+}
+
+// Создание элемента чата в списке
+function createChatItem(chatId, chatData, currentUsername) {
+    const div = document.createElement('div');
+    div.className = `chat-item ${currentChatId === chatId ? 'active' : ''}`;
+    div.onclick = () => openChat(chatId);
+
+    const otherParticipant = chatData.participants.find(p => p !== currentUsername) || 'Неизвестный';
+    const lastMessageTime = chatData.lastMessage ? getTimeAgo(new Date(chatData.lastMessage)) : '';
+
+    div.innerHTML = `
+        <div class="chat-avatar">
+            <i class="fas fa-user-circle"></i>
+        </div>
+        <div class="chat-info">
+            <div class="chat-name">${escapeHtml(otherParticipant)}</div>
+            <div class="chat-last-message">${chatData.lastMessageText ? escapeHtml(chatData.lastMessageText.substring(0, 30)) + (chatData.lastMessageText.length > 30 ? '...' : '') : 'Нет сообщений'}</div>
+        </div>
+        <div class="chat-time">${lastMessageTime}</div>
+    `;
+
+    return div;
+}
+
+// Создание нового чата
+window.createNewChat = async function () {
+    const participant = document.getElementById('chat-participant')?.value.trim();
+    const currentUsername = document.getElementById('username')?.value.trim();
+
+    if (!participant) {
+        alert('Введите имя пользователя!');
+        return;
+    }
+
+    if (participant === currentUsername) {
+        alert('Нельзя создать чат с самим собой!');
+        return;
+    }
+
+    // Проверяем, существует ли уже чат с этим пользователем
+    const existingChat = allChats.find(chat =>
+        chat.data.participants.includes(participant) &&
+        chat.data.participants.includes(currentUsername)
+    );
+
+    if (existingChat) {
+        alert('Чат с этим пользователем уже существует!');
+        closeNewChatModal();
+        openChat(existingChat.id);
+        return;
+    }
+
+    try {
+        const newChat = {
+            participants: [currentUsername, participant],
+            createdBy: currentUsername,
+            timestamp: Date.now(),
+            lastMessage: null,
+            lastMessageText: null
+        };
+
+        await push(chatsRef, newChat);
+        console.log('✅ Чат создан!');
+        closeNewChatModal();
+        loadUserChats();
+    } catch (error) {
+        console.error('❌ Ошибка создания чата:', error);
+        alert('Ошибка: ' + error.message);
+    }
 };
 
 // ============ СОЗДАНИЕ ПОСТА ============
@@ -926,6 +1077,185 @@ window.banUser = async function (fingerprint, username) {
         loadStatistics();
     } catch (error) {
         alert('Ошибка: ' + error.message);
+    }
+};
+
+// Открытие чата
+function openChat(chatId) {
+    currentChatId = chatId;
+
+    // Обновляем активный элемент в списке
+    document.querySelectorAll('.chat-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event?.target?.closest('.chat-item')?.classList.add('active');
+
+    loadChatMessages(chatId);
+}
+
+// Загрузка сообщений чата
+function loadChatMessages(chatId) {
+    const chatWindow = document.getElementById('chat-window');
+    if (!chatWindow) return;
+
+    // Показываем индикатор загрузки
+    chatWindow.innerHTML = '<div class="chat-loading">Загрузка сообщений...</div>';
+
+    const chat = allChats.find(c => c.id === chatId);
+    if (!chat) return;
+
+    const currentUsername = document.getElementById('username')?.value.trim();
+    const otherParticipant = chat.data.participants.find(p => p !== currentUsername) || 'Неизвестный';
+
+    // Загружаем сообщения
+    const chatMessagesRef = query(messagesRef, orderByChild('chatId'));
+    onValue(chatMessagesRef, (snapshot) => {
+        const messages = [];
+
+        if (snapshot.exists()) {
+            snapshot.forEach(child => {
+                const message = child.val();
+                if (message.chatId === chatId) {
+                    messages.push({
+                        id: child.key,
+                        data: message
+                    });
+                }
+            });
+        }
+
+        // Сортируем сообщения по времени
+        messages.sort((a, b) => a.data.timestamp - b.data.timestamp);
+
+        // Создаем интерфейс чата
+        chatWindow.innerHTML = `
+            <div class="chat-header">
+                <div class="chat-participant">
+                    <i class="fas fa-user-circle"></i>
+                    <span>${escapeHtml(otherParticipant)}</span>
+                </div>
+                <button class="close-chat-btn" onclick="closeCurrentChat()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="chat-messages" id="chat-messages-${chatId}">
+                ${messages.length === 0 ?
+                    '<div class="no-messages"><i class="fas fa-comments"></i><p>Нет сообщений. Начните разговор!</p></div>' :
+                    messages.map(msg => createMessageElement(msg.id, msg.data, currentUsername)).join('')
+                }
+            </div>
+            <div class="chat-input">
+                <input type="text" id="message-input-${chatId}" placeholder="Напишите сообщение..." class="message-input">
+                <button class="send-message-btn" onclick="sendMessage('${chatId}')">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        `;
+
+        // Прокручиваем к последнему сообщению
+        const messagesContainer = document.getElementById(`chat-messages-${chatId}`);
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Добавляем обработчик Enter для отправки
+        const messageInput = document.getElementById(`message-input-${chatId}`);
+        if (messageInput) {
+            messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage(chatId);
+                }
+            });
+            messageInput.focus();
+        }
+    }, { onlyOnce: true });
+}
+
+// Создание элемента сообщения
+function createMessageElement(messageId, messageData, currentUsername) {
+    const isOwn = messageData.author === currentUsername;
+    const time = getTimeAgo(new Date(messageData.timestamp));
+
+    return `
+        <div class="message ${isOwn ? 'own' : 'other'}">
+            <div class="message-content">
+                <div class="message-text">${escapeHtml(messageData.text)}</div>
+                <div class="message-time">${time}</div>
+            </div>
+        </div>
+    `;
+}
+
+// Отправка сообщения
+window.sendMessage = async function (chatId) {
+    const messageInput = document.getElementById(`message-input-${chatId}`);
+    const text = messageInput?.value.trim();
+
+    if (!text) return;
+
+    const currentUsername = document.getElementById('username')?.value.trim();
+    if (!currentUsername) {
+        alert('Введите ваше имя!');
+        return;
+    }
+
+    if (userStatus.banned) {
+        alert('❌ Вы забанены и не можете отправлять сообщения!');
+        return;
+    }
+
+    if (userStatus.muted) {
+        alert('❌ Вы замучены и не можете отправлять сообщения!');
+        return;
+    }
+
+    try {
+        const newMessage = {
+            chatId: chatId,
+            author: currentUsername,
+            text: text,
+            timestamp: Date.now(),
+            fingerprint: userFingerprint,
+            userAgent: navigator.userAgent.substring(0, 200)
+        };
+
+        await push(messagesRef, newMessage);
+
+        // Обновляем последнее сообщение в чате
+        await set(ref(database, `chats/${chatId}`), {
+            ...allChats.find(c => c.id === chatId).data,
+            lastMessage: Date.now(),
+            lastMessageText: text
+        });
+
+        // Очищаем поле ввода
+        messageInput.value = '';
+
+        console.log('✅ Сообщение отправлено!');
+        await recordUserActivity();
+    } catch (error) {
+        console.error('❌ Ошибка отправки сообщения:', error);
+        alert('Ошибка: ' + error.message);
+    }
+};
+
+// Закрытие текущего чата
+window.closeCurrentChat = function () {
+    currentChatId = null;
+    document.querySelectorAll('.chat-item').forEach(item => {
+        item.classList.remove('active');
+    });
+
+    const chatWindow = document.getElementById('chat-window');
+    if (chatWindow) {
+        chatWindow.innerHTML = `
+            <div class="chat-placeholder">
+                <i class="fas fa-comments"></i>
+                <h3>Выберите чат</h3>
+                <p>Выберите чат из списка слева или создайте новый</p>
+            </div>
+        `;
     }
 };
 
