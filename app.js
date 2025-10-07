@@ -2170,3 +2170,69 @@ setInterval(() => {
 setTimeout(() => {
     showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
 }, 1000);
+
+// ============ МОБИЛЬНЫЕ ОПТИМИЗАЦИИ ============
+// Предотвращаем зум при двойном тапе на iOS (полезно и для Android)
+document.addEventListener('touchstart', function(event) {
+    if (event.touches.length > 1) {
+        event.preventDefault();
+    }
+}, { passive: false });
+
+// Улучшаем обработку touch событий для чатов
+document.addEventListener('DOMContentLoaded', function() {
+    // Предотвращаем контекстное меню на длинное нажатие
+    document.addEventListener('contextmenu', function(e) {
+        if (e.target.closest('.chat-item, .message, .chat-avatar')) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    // Оптимизируем скроллинг на мобильных устройствах
+    const chatMessages = document.querySelector('.chat-messages');
+    const chatsList = document.querySelector('.chats-list');
+
+    if (chatMessages) {
+        chatMessages.addEventListener('touchstart', function() {}, { passive: true });
+    }
+
+    if (chatsList) {
+        chatsList.addEventListener('touchstart', function() {}, { passive: true });
+    }
+
+    // Предотвращаем выделение текста в чатах на мобильных
+    function preventTextSelection(element) {
+        if (element) {
+            element.style.webkitUserSelect = 'none';
+            element.style.userSelect = 'none';
+            element.style.webkitTouchCallout = 'none';
+        }
+    }
+
+    // Применяем к элементам чата
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.chats-modal')) {
+            const chatItems = document.querySelectorAll('.chat-item, .message, .chat-avatar');
+            chatItems.forEach(preventTextSelection);
+        }
+    });
+});
+
+// Оптимизации для виртуальной клавиатуры на Android
+window.addEventListener('resize', function() {
+    // Корректируем высоту при появлении/скрытии клавиатуры
+    const viewport = window.visualViewport;
+    if (viewport) {
+        const chatsModal = document.querySelector('.chats-modal');
+        if (chatsModal && chatsModal.classList.contains('show')) {
+            // Автоматически прокручиваем к полю ввода при появлении клавиатуры
+            setTimeout(() => {
+                const messageInput = document.querySelector('.message-input:focus');
+                if (messageInput) {
+                    messageInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 300);
+        }
+    }
+});

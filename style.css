@@ -3279,6 +3279,19 @@ button, .icon-btn, .sort-btn, .action-btn {
     .chat-input {
         padding: 12px 15px;
     }
+
+    /* Увеличиваем кнопки для touch устройств */
+    .new-chat-btn {
+        padding: 12px 20px;
+        font-size: 14px;
+        min-height: 44px;
+    }
+
+    .close-chat-btn {
+        padding: 8px;
+        min-width: 44px;
+        min-height: 44px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -3301,6 +3314,7 @@ button, .icon-btn, .sort-btn, .action-btn {
     .chat-item {
         padding: 12px;
         gap: 10px;
+        min-height: 60px; /* Увеличиваем область нажатия */
     }
 
     .chat-avatar {
@@ -3335,12 +3349,245 @@ button, .icon-btn, .sort-btn, .action-btn {
     .message-input {
         padding: 10px 14px;
         font-size: 13px;
+        min-height: 44px; /* Увеличиваем поле ввода */
     }
 
     .send-message-btn {
-        width: 36px;
-        height: 36px;
+        width: 44px;
+        height: 44px;
+        font-size: 16px;
+    }
+
+    /* Увеличиваем кнопки для лучшего touch взаимодействия */
+    .close-btn {
+        padding: 8px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* Специфические оптимизации для Android устройств */
+@media (max-width: 768px) and (-webkit-min-device-pixel-ratio: 1.5) {
+    /* Android устройства с высоким DPI */
+    .chats-list {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+    }
+
+    .chat-messages {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+    }
+
+    /* Улучшаем скроллинг на Android */
+    .chats-list::-webkit-scrollbar,
+    .chat-messages::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .chats-list::-webkit-scrollbar-thumb,
+    .chat-messages::-webkit-scrollbar-thumb {
+        background: var(--border-medium);
+        border-radius: 2px;
+    }
+
+    /* Увеличиваем размеры для лучшего взаимодействия */
+    .chat-item {
+        min-height: 64px;
+        padding: 16px;
+    }
+
+    .message-input {
+        min-height: 48px;
+        font-size: 16px; /* Предотвращаем зум на iOS, полезно и для Android */
+    }
+
+    .send-message-btn {
+        width: 48px;
+        height: 48px;
+    }
+
+    /* Улучшаем кнопки для touch */
+    .new-chat-btn,
+    .close-chat-btn,
+    .close-btn {
+        min-width: 48px;
+        min-height: 48px;
+    }
+}
+
+/* Оптимизации для очень маленьких Android экранов */
+@media (max-width: 360px) {
+    .chats-modal-header {
+        padding: 12px;
+    }
+
+    .chats-modal-header h2 {
+        font-size: 16px;
+    }
+
+    .chats-header {
+        padding: 12px;
+    }
+
+    .chats-header h3 {
         font-size: 14px;
+    }
+
+    .chat-item {
+        padding: 10px;
+        min-height: 56px;
+    }
+
+    .chat-avatar {
+        font-size: 24px;
+    }
+
+    .chat-name {
+        font-size: 13px;
+    }
+
+    .chat-last-message {
+        font-size: 11px;
+    }
+
+    .chat-header {
+        padding: 10px 12px;
+    }
+
+    .chat-participant {
+        font-size: 13px;
+    }
+
+    .chat-participant i {
+        font-size: 20px;
+    }
+
+    .message-content {
+        padding: 8px 12px;
+        max-width: 95%;
+    }
+
+    .message-text {
+        font-size: 12px;
+    }
+
+    .chat-input {
+        padding: 10px 12px;
+    }
+
+    .message-input {
+        padding: 8px 12px;
+        font-size: 14px;
+        min-height: 40px;
+    }
+
+    .send-message-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 14px;
+    }
+}
+
+/* Специфические стили для Android Chrome */
+@media screen and (max-width: 768px) {
+    /* Убираем bounce эффект на Android */
+    .chats-list,
+    .chat-messages {
+        overscroll-behavior: contain;
+    }
+
+    /* Улучшаем производительность скроллинга */
+    .chat-item,
+    .message {
+        will-change: transform;
+        transform: translateZ(0);
+    }
+
+    /* Предотвращаем выделение текста на touch устройствах */
+    .chat-item,
+    .message,
+    .chat-avatar,
+    .message-content {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+
+    /* Разрешаем выделение только в поле ввода */
+    .message-input {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+    }
+
+    /* Улучшаем touch feedback */
+    .chat-item:active {
+        background: var(--bg-active);
+        transform: scale(0.98);
+    }
+
+    .send-message-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* Оптимизируем шрифты для Android */
+    body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+    }
+
+    /* Улучшаем видимость текста на Android */
+    .message-input::placeholder {
+        color: var(--text-muted);
+        opacity: 0.7;
+    }
+}
+
+/* Дополнительные оптимизации для Android WebView */
+@media screen and (max-width: 768px) and (-webkit-min-device-pixel-ratio: 1) {
+    /* Увеличиваем контрастность для лучшей видимости */
+    .chat-item {
+        border: 1px solid var(--border-medium);
+    }
+
+    .chat-item:hover {
+        border-color: var(--primary);
+    }
+
+    /* Улучшаем фокус для клавиатурной навигации */
+    .message-input:focus {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+    }
+
+    /* Предотвращаем зум при фокусе на input (для iOS, но полезно и для Android) */
+    .message-input {
+        font-size: 16px;
+    }
+
+    /* Увеличиваем область нажатия для кнопок */
+    .icon-btn,
+    .close-btn,
+    .new-chat-btn,
+    .send-message-btn {
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Улучшаем видимость активных состояний */
+    .chat-item:active,
+    .icon-btn:active,
+    .close-btn:active,
+    .new-chat-btn:active,
+    .send-message-btn:active {
+        opacity: 0.8;
     }
 }
 
