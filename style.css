@@ -3175,6 +3175,9 @@ button, .icon-btn, .sort-btn, .action-btn {
     border-radius: 18px;
     position: relative;
     word-wrap: break-word;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
 }
 
 .message.own .message-content {
@@ -3187,6 +3190,38 @@ button, .icon-btn, .sort-btn, .action-btn {
     background: var(--bg-secondary);
     color: var(--text-primary);
     border-bottom-left-radius: 4px;
+}
+
+.copy-message-btn {
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.copy-message-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.message.own .copy-message-btn {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.message.own .copy-message-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
 }
 
 .message-text {
@@ -3308,6 +3343,12 @@ button, .icon-btn, .sort-btn, .action-btn {
         max-width: 85%;
     }
 
+    .copy-message-btn {
+        width: 24px;
+        height: 24px;
+        font-size: 14px;
+    }
+
     .chat-input {
         padding: 12px 15px;
     }
@@ -3388,6 +3429,12 @@ button, .icon-btn, .sort-btn, .action-btn {
     .message-content {
         padding: 10px 14px;
         max-width: 90%;
+    }
+
+    .copy-message-btn {
+        width: 22px;
+        height: 22px;
+        font-size: 12px;
     }
 
     .message-text {
@@ -3516,6 +3563,12 @@ button, .icon-btn, .sort-btn, .action-btn {
         max-width: 95%;
     }
 
+    .copy-message-btn {
+        width: 20px;
+        height: 20px;
+        font-size: 11px;
+    }
+
     .message-text {
         font-size: 12px;
     }
@@ -3556,7 +3609,8 @@ button, .icon-btn, .sort-btn, .action-btn {
     .chat-item,
     .message,
     .chat-avatar,
-    .message-content {
+    .message-content,
+    .copy-message-btn {
         -webkit-user-select: none;
         -moz-user-select: none;
         -ms-user-select: none;

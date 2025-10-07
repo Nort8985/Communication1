@@ -1386,6 +1386,9 @@ function createMessageElement(messageId, messageData, currentUsername) {
             <div class="message-content">
                 <div class="message-text">${escapeHtml(messageData.text)}</div>
                 <div class="message-time">${time}</div>
+                <button class="copy-message-btn" onclick="copyMessage('${messageId}', '${escapeHtml(messageData.text)}')" title="Копировать сообщение">
+                    <i class="fas fa-copy"></i>
+                </button>
             </div>
         </div>
     `;
@@ -1468,6 +1471,61 @@ window.closeCurrentChat = function () {
                 <p>Выберите чат из списка слева или создайте новый</p>
             </div>
         `;
+    }
+};
+
+// Копирование сообщения в буфер обмена
+window.copyMessage = async function (messageId, text) {
+    try {
+        // Декодируем HTML entities обратно в текст
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = text;
+        const plainText = tempDiv.textContent || tempDiv.innerText || text;
+
+        // Современный Clipboard API
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(plainText);
+        } else {
+            // Fallback для старых браузеров
+            const textArea = document.createElement('textarea');
+            textArea.value = plainText;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('Fallback: Ошибка копирования', err);
+                showErrorNotification('Не удалось скопировать сообщение', 3000);
+                return;
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+
+        // Визуальная обратная связь
+        const copyBtn = document.querySelector(`[onclick*="copyMessage('${messageId}'"]`);
+        if (copyBtn) {
+            const originalIcon = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fas fa-check"></i>';
+            copyBtn.style.color = 'var(--success)';
+
+            setTimeout(() => {
+                copyBtn.innerHTML = originalIcon;
+                copyBtn.style.color = '';
+            }, 1000);
+        }
+
+        showSuccessNotification('Сообщение скопировано!', 2000);
+        console.log('✅ Сообщение скопировано:', plainText);
+
+    } catch (error) {
+        console.error('❌ Ошибка копирования сообщения:', error);
+        showErrorNotification('Не удалось скопировать сообщение', 3000);
     }
 };
 
