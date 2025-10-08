@@ -130,9 +130,13 @@ async function recordUserActivity() {
     const activityRef = ref(database, `users/${userFingerprint}`);
 
     try {
+        // Получаем текущие данные, чтобы не перезаписывать username если он уже установлен
+        const snapshot = await get(activityRef);
+        const currentData = snapshot.exists() ? snapshot.val() : {};
+
         await set(activityRef, {
             fingerprint: userFingerprint,
-            lastUsername: username,
+            username: currentData.username || username, // Не перезаписываем существующий username
             lastSeen: serverTimestamp(),
             userAgent: navigator.userAgent.substring(0, 200)
         });
@@ -141,16 +145,63 @@ async function recordUserActivity() {
     }
 }
 
+// Загрузка постоянного ника из Firebase
+async function loadPermanentUsername() {
+    if (!userFingerprint) return null;
+
+    try {
+        const userRef = ref(database, `users/${userFingerprint}`);
+        const snapshot = await get(userRef);
+
+        if (snapshot.exists()) {
+            const userData = snapshot.val();
+            return userData.username || null;
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки ника:', error);
+    }
+
+    return null;
+}
+
+// Сохранение постоянного ника в Firebase
+async function savePermanentUsername(username) {
+    if (!userFingerprint || !username) return;
+
+    const userRef = ref(database, `users/${userFingerprint}`);
+
+    try {
+        // Получаем текущие данные пользователя
+        const snapshot = await get(userRef);
+        const currentData = snapshot.exists() ? snapshot.val() : {};
+
+        await set(userRef, {
+            ...currentData,
+            fingerprint: userFingerprint,
+            username: username,
+            lastSeen: serverTimestamp(),
+            userAgent: navigator.userAgent.substring(0, 200)
+        });
+
+        console.log('✅ Постоянный ник сохранен:', username);
+    } catch (error) {
+        console.error('Ошибка сохранения постоянного ника:', error);
+    }
+}
+
 // ============ ОНЛАЙН ============
-const userId = 'user_' + Math.random().toString(36).substr(2, 9);
-const userStatusOnlineRef = ref(database, `online/${userId}`);
+let userStatusOnlineRef = null;
 
 async function initOnlineStatus() {
+    if (!userFingerprint) return;
+
+    userStatusOnlineRef = ref(database, `online/${userFingerprint}`);
+
     try {
         await set(userStatusOnlineRef, {
             online: true,
             timestamp: serverTimestamp(),
-            fingerprint: userFingerprint || 'loading',
+            fingerprint: userFingerprint,
             username: document.getElementById('username')?.value.trim() || 'Аноним'
         });
         onDisconnect(userStatusOnlineRef).remove();
@@ -1026,19 +1077,19 @@ function loadAllUsers() {
             item.innerHTML = `
                 <div class="admin-item-header">
                     <div class="admin-item-title">
-                        ${escapeHtml(user.lastUsername || 'Аноним')}
-                        ${user.lastUsername === 'Nort89855' ? '<span class="status-badge admin">ADMIN</span>' : ''}
+                        ${escapeHtml(user.username || 'Аноним')}
+                        ${user.username === 'Nort89855' ? '<span class="status-badge admin">ADMIN</span>' : ''}
                         ${isBanned ? '<span class="status-badge banned">BANNED</span>' : ''}
                         ${isMuted ? '<span class="status-badge muted">MUTED</span>' : ''}
                     </div>
                 </div>
                 <div class="admin-item-info">
                     <strong>ID:</strong> ${userId.substring(0, 30)}...<br>
-                    <strong>Последняя активность:</strong> Недавно
+                    <strong>Последняя активность:</strong> ${user.lastSeen ? getTimeAgo(new Date(user.lastSeen)) : 'Недавно'}
                 </div>
                 <div class="admin-item-actions">
                     ${!isBanned ? `
-                        <button style="background: #F44336;" onclick="banUserById('${userId}', '${escapeHtml(user.lastUsername)}')">
+                        <button style="background: #F44336;" onclick="banUserById('${userId}', '${escapeHtml(user.username)}')">
                             <i class="fas fa-ban"></i> Забанить
                         </button>
                     ` : `
@@ -1047,7 +1098,7 @@ function loadAllUsers() {
                         </button>
                     `}
                     ${!isMuted ? `
-                        <button style="background: #FF9800;" onclick="muteUserById('${userId}', '${escapeHtml(user.lastUsername)}')">
+                        <button style="background: #FF9800;" onclick="muteUserById('${userId}', '${escapeHtml(user.username)}')">
                             <i class="fas fa-volume-mute"></i> Замутить
                         </button>
                     ` : `
@@ -1057,6 +1108,9 @@ function loadAllUsers() {
                     `}
                     <button style="background: #757575;" onclick="deleteAllUserPosts('${userId}')">
                         <i class="fas fa-trash"></i> Удалить посты
+                    </button>
+                    <button style="background: #9C27B0;" onclick="changeUserUsername('${userId}', '${escapeHtml(user.username)}')">
+                        <i class="fas fa-user-edit"></i> Изменить ник
                     </button>
                 </div>
             `;
@@ -1601,6 +1655,59 @@ window.deleteAllUserPosts = async function (fingerprint) {
         alert(`✅ Удалено постов: ${deleted}`);
     } catch (error) {
         alert('Ошибка: ' + error.message);
+    }
+};
+
+window.changeUserUsername = async function (fingerprint, currentUsername) {
+    if (!isAdmin()) {
+        alert('❌ У вас нет прав!');
+        return;
+    }
+
+    const newUsername = prompt(`Изменить ник пользователя "${currentUsername}" на:`, currentUsername);
+    if (!newUsername || newUsername.trim() === currentUsername) return;
+
+    const trimmedUsername = newUsername.trim();
+    if (!trimmedUsername) {
+        alert('Ник не может быть пустым!');
+        return;
+    }
+
+    if (!confirm(`Вы уверены, что хотите изменить ник "${currentUsername}" на "${trimmedUsername}"?\n\nЭто действие необратимо!`)) {
+        return;
+    }
+
+    try {
+        const userRef = ref(database, `users/${fingerprint}`);
+        const snapshot = await get(userRef);
+
+        if (!snapshot.exists()) {
+            alert('Пользователь не найден!');
+            return;
+        }
+
+        const userData = snapshot.val();
+        await set(userRef, {
+            ...userData,
+            username: trimmedUsername,
+            lastSeen: serverTimestamp()
+        });
+
+        // Обновляем онлайн статус если пользователь онлайн
+        const onlineRef = ref(database, `online/${fingerprint}`);
+        const onlineSnapshot = await get(onlineRef);
+        if (onlineSnapshot.exists()) {
+            const onlineData = onlineSnapshot.val();
+            await set(onlineRef, {
+                ...onlineData,
+                username: trimmedUsername
+            });
+        }
+
+        alert(`✅ Ник пользователя изменен на "${trimmedUsername}"`);
+        loadAllUsers(); // Перезагружаем список пользователей
+    } catch (error) {
+        alert('Ошибка изменения ника: ' + error.message);
     }
 };
 
@@ -2292,47 +2399,65 @@ window.checkConnection = async function () {
 
 const usernameInput = document.getElementById('username');
 if (usernameInput) {
-    // Загружаем сохраненный ник при старте
-    const savedUsername = loadUsername();
-    if (savedUsername) {
-        usernameInput.value = savedUsername;
+    // Загружаем постоянный ник при старте
+    const permanentUsername = await loadPermanentUsername();
+    if (permanentUsername) {
+        usernameInput.value = permanentUsername;
         updateAdminUI();
         await recordUserActivity();
 
-        // Обновляем онлайн статус с сохраненным именем
-        set(userStatusOnlineRef, {
-            online: true,
-            timestamp: serverTimestamp(),
-            fingerprint: userFingerprint || 'loading',
-            username: savedUsername
-        });
+        // Обновляем онлайн статус с постоянным именем
+        if (userStatusOnlineRef) {
+            set(userStatusOnlineRef, {
+                online: true,
+                timestamp: serverTimestamp(),
+                fingerprint: userFingerprint || 'loading',
+                username: permanentUsername
+            });
+        }
     }
 
-    usernameInput.addEventListener('input', () => {
+    let usernameSet = !!permanentUsername; // Флаг, был ли ник уже установлен
+
+    usernameInput.addEventListener('input', async () => {
         const username = usernameInput.value.trim();
 
-        // Сохраняем ник при вводе
-        if (username) {
-            saveUsername(username);
+        if (username && !usernameSet) {
+            // Первый раз вводим ник - показываем уведомление
+            const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
+            if (!confirmed) {
+                usernameInput.value = '';
+                return;
+            }
+            usernameSet = true;
+
+            // Сохраняем постоянный ник
+            await savePermanentUsername(username);
+            showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
+        } else if (username && usernameSet) {
+            // Ник уже был установлен - просто обновляем
+            await savePermanentUsername(username);
         }
 
         updateAdminUI();
-        recordUserActivity();
+        await recordUserActivity();
 
         // Обновляем имя в онлайн статусе
-        set(userStatusOnlineRef, {
-            online: true,
-            timestamp: serverTimestamp(),
-            fingerprint: userFingerprint || 'loading',
-            username: username || 'Аноним'
-        });
+        if (userStatusOnlineRef) {
+            set(userStatusOnlineRef, {
+                online: true,
+                timestamp: serverTimestamp(),
+                fingerprint: userFingerprint || 'loading',
+                username: username || 'Аноним'
+            });
+        }
     });
 
     // Добавляем обработчик потери фокуса для сохранения ника
-    usernameInput.addEventListener('blur', () => {
+    usernameInput.addEventListener('blur', async () => {
         const username = usernameInput.value.trim();
-        if (username) {
-            saveUsername(username);
+        if (username && usernameSet) {
+            await savePermanentUsername(username);
         }
     });
 
