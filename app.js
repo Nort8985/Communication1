@@ -2323,8 +2323,122 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!initialized) {
         console.error('❌ Не удалось инициализировать приложение после нескольких попыток');
         showConnectionError();
+        return;
     }
+
+    // После успешной инициализации загружаем ник
+    await loadAndSetupUsername();
+
+    // Показываем приветственное уведомление
+    setTimeout(() => {
+        showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
+    }, 1000);
 });
+
+// ============ ЗАГРУЗКА ПОСТОЯННОГО НИКА ============
+async function loadAndSetupUsername() {
+    const usernameInput = document.getElementById('username');
+    const confirmUsernameBtn = document.getElementById('confirm-username-btn');
+
+    if (!usernameInput || !confirmUsernameBtn) return;
+
+    try {
+        // Ждем пока fingerprint будет готов
+        let attempts = 0;
+        while (!userFingerprint && attempts < 50) { // Максимум 5 секунд ожидания
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+
+        if (!userFingerprint) {
+            console.warn('Fingerprint не загружен, пропускаем загрузку ника');
+            confirmUsernameBtn.style.display = 'flex';
+            return;
+        }
+
+        // Загружаем постоянный ник
+        const permanentUsername = await loadPermanentUsername();
+        if (permanentUsername) {
+            usernameInput.value = permanentUsername;
+            confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку, если ник уже установлен
+            console.log('✅ Загружен постоянный ник:', permanentUsername);
+        } else {
+            confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку, если ник не установлен
+            console.log('ℹ️ Ник не установлен, показываем кнопку подтверждения');
+        }
+
+        let usernameSet = !!permanentUsername; // Флаг, был ли ник уже установлен
+
+        // Обработчик ввода - просто обновляем UI
+        usernameInput.addEventListener('input', () => {
+            const username = usernameInput.value.trim();
+
+            if (username && !usernameSet) {
+                confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку подтверждения
+            } else if (!username) {
+                confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку если поле пустое
+            }
+
+            updateAdminUI();
+        });
+
+        // Обработчик кнопки подтверждения
+        confirmUsernameBtn.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+
+            if (!username) {
+                alert('Введите имя!');
+                return;
+            }
+
+            // Показываем предупреждение
+            const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
+            if (!confirmed) {
+                return;
+            }
+
+            usernameSet = true;
+
+            // Сохраняем постоянный ник
+            await savePermanentUsername(username);
+            confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку после подтверждения
+            showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
+
+            updateAdminUI();
+            await recordUserActivity();
+
+            // Обновляем имя в онлайн статусе
+            if (userStatusOnlineRef) {
+                set(userStatusOnlineRef, {
+                    online: true,
+                    timestamp: serverTimestamp(),
+                    fingerprint: userFingerprint,
+                    username: username
+                });
+            }
+        });
+
+        // Добавляем обработчик Enter для отправки комментариев
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                const activeElement = document.activeElement;
+                if (activeElement && activeElement.classList.contains('comment-input')) {
+                    const postId = activeElement.id.replace('comment-text-', '');
+                    if (postId) {
+                        e.preventDefault();
+                        submitComment(postId);
+                    }
+                }
+            }
+        });
+
+        updateAdminUI();
+
+    } catch (error) {
+        console.error('Ошибка настройки ника:', error);
+        confirmUsernameBtn.style.display = 'flex';
+    }
+}
 
 // Показать ошибку подключения
 function showConnectionError() {
@@ -2435,99 +2549,6 @@ window.checkConnection = async function () {
     }
 };
 
-const usernameInput = document.getElementById('username');
-const confirmUsernameBtn = document.getElementById('confirm-username-btn');
-
-if (usernameInput && confirmUsernameBtn) {
-    // Загружаем постоянный ник при старте
-    const permanentUsername = await loadPermanentUsername();
-    if (permanentUsername) {
-        usernameInput.value = permanentUsername;
-        confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку, если ник уже установлен
-        updateAdminUI();
-        await recordUserActivity();
-
-        // Обновляем онлайн статус с постоянным именем
-        if (userStatusOnlineRef) {
-            set(userStatusOnlineRef, {
-                online: true,
-                timestamp: serverTimestamp(),
-                fingerprint: userFingerprint || 'loading',
-                username: permanentUsername
-            });
-        }
-    } else {
-        confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку, если ник не установлен
-    }
-
-    let usernameSet = !!permanentUsername; // Флаг, был ли ник уже установлен
-
-    // Обработчик ввода - просто обновляем UI
-    usernameInput.addEventListener('input', () => {
-        const username = usernameInput.value.trim();
-
-        if (username && !usernameSet) {
-            confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку подтверждения
-        } else if (!username) {
-            confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку если поле пустое
-        }
-
-        updateAdminUI();
-    });
-
-    // Обработчик кнопки подтверждения
-    confirmUsernameBtn.addEventListener('click', async () => {
-        const username = usernameInput.value.trim();
-
-        if (!username) {
-            alert('Введите имя!');
-            return;
-        }
-
-        // Показываем предупреждение
-        const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
-        if (!confirmed) {
-            return;
-        }
-
-        usernameSet = true;
-
-        // Сохраняем постоянный ник
-        await savePermanentUsername(username);
-        confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку после подтверждения
-        showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
-
-        updateAdminUI();
-        await recordUserActivity();
-
-        // Обновляем имя в онлайн статусе
-        if (userStatusOnlineRef) {
-            set(userStatusOnlineRef, {
-                online: true,
-                timestamp: serverTimestamp(),
-                fingerprint: userFingerprint || 'loading',
-                username: username
-            });
-        }
-    });
-
-    // Добавляем обработчик Enter для отправки комментариев
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.ctrlKey) {
-            const activeElement = document.activeElement;
-            if (activeElement && activeElement.classList.contains('comment-input')) {
-                const postId = activeElement.id.replace('comment-text-', '');
-                if (postId) {
-                    e.preventDefault();
-                    submitComment(postId);
-                }
-            }
-        }
-    });
-
-    updateAdminUI();
-}
-
 // Экран загрузки скрывается автоматически после успешной инициализации
 console.log('✅ DevTalk готов! Все данные обновляются в реальном времени');
 
@@ -2535,11 +2556,6 @@ console.log('✅ DevTalk готов! Все данные обновляются 
 setInterval(() => {
     console.log('🔄 DevTalk работает в реальном времени - все данные синхронизированы');
 }, 60000); // Каждую минуту
-
-// Показываем приветственное уведомление
-setTimeout(() => {
-    showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
-}, 1000);
 
 // ============ МОБИЛЬНЫЕ ОПТИМИЗАЦИИ ============
 // Предотвращаем зум при двойном тапе на iOS (полезно и для Android)
