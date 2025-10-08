@@ -1750,15 +1750,53 @@ function clearUsername() {
 }
 
 // ============ ГЛОБАЛЬНАЯ ФУНКЦИЯ ДЛЯ ОЧИСТКИ НИКА ============
-window.clearSavedUsername = function () {
+window.clearSavedUsername = async function () {
     if (confirm('Вы уверены, что хотите очистить сохраненный ник? При следующем посещении сайта поле имени будет пустым.')) {
-        clearUsername();
-        const usernameInput = document.getElementById('username');
-        if (usernameInput) {
-            usernameInput.value = '';
-            usernameInput.focus();
+        if (!userFingerprint) {
+            alert('Ошибка: fingerprint не загружен');
+            return;
         }
-        alert('✅ Сохраненный ник очищен!');
+
+        try {
+            // Удаляем ник из Firebase
+            const userRef = ref(database, `users/${userFingerprint}`);
+            const snapshot = await get(userRef);
+            if (snapshot.exists()) {
+                const userData = snapshot.val();
+                // Удаляем только поле username, сохраняя другие данные
+                const { username, ...otherData } = userData;
+                await set(userRef, {
+                    ...otherData,
+                    lastSeen: serverTimestamp()
+                });
+            }
+
+            // Очищаем поле ввода
+            const usernameInput = document.getElementById('username');
+            const confirmUsernameBtn = document.getElementById('confirm-username-btn');
+            if (usernameInput) {
+                usernameInput.value = '';
+                usernameInput.focus();
+            }
+            if (confirmUsernameBtn) {
+                confirmUsernameBtn.style.display = 'none';
+            }
+
+            // Обновляем онлайн статус
+            if (userStatusOnlineRef) {
+                set(userStatusOnlineRef, {
+                    online: true,
+                    timestamp: serverTimestamp(),
+                    fingerprint: userFingerprint,
+                    username: 'Аноним'
+                });
+            }
+
+            alert('✅ Сохраненный ник очищен!');
+        } catch (error) {
+            console.error('Ошибка очистки ника:', error);
+            alert('Ошибка: ' + error.message);
+        }
     }
 };
 
@@ -2398,11 +2436,14 @@ window.checkConnection = async function () {
 };
 
 const usernameInput = document.getElementById('username');
-if (usernameInput) {
+const confirmUsernameBtn = document.getElementById('confirm-username-btn');
+
+if (usernameInput && confirmUsernameBtn) {
     // Загружаем постоянный ник при старте
     const permanentUsername = await loadPermanentUsername();
     if (permanentUsername) {
         usernameInput.value = permanentUsername;
+        confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку, если ник уже установлен
         updateAdminUI();
         await recordUserActivity();
 
@@ -2415,29 +2456,46 @@ if (usernameInput) {
                 username: permanentUsername
             });
         }
+    } else {
+        confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку, если ник не установлен
     }
 
     let usernameSet = !!permanentUsername; // Флаг, был ли ник уже установлен
 
-    usernameInput.addEventListener('input', async () => {
+    // Обработчик ввода - просто обновляем UI
+    usernameInput.addEventListener('input', () => {
         const username = usernameInput.value.trim();
 
         if (username && !usernameSet) {
-            // Первый раз вводим ник - показываем уведомление
-            const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
-            if (!confirmed) {
-                usernameInput.value = '';
-                return;
-            }
-            usernameSet = true;
-
-            // Сохраняем постоянный ник
-            await savePermanentUsername(username);
-            showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
-        } else if (username && usernameSet) {
-            // Ник уже был установлен - просто обновляем
-            await savePermanentUsername(username);
+            confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку подтверждения
+        } else if (!username) {
+            confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку если поле пустое
         }
+
+        updateAdminUI();
+    });
+
+    // Обработчик кнопки подтверждения
+    confirmUsernameBtn.addEventListener('click', async () => {
+        const username = usernameInput.value.trim();
+
+        if (!username) {
+            alert('Введите имя!');
+            return;
+        }
+
+        // Показываем предупреждение
+        const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
+        if (!confirmed) {
+            return;
+        }
+
+        usernameSet = true;
+
+        // Сохраняем постоянный ник
+        await savePermanentUsername(username);
+        confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку после подтверждения
+        showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
 
         updateAdminUI();
         await recordUserActivity();
@@ -2448,16 +2506,8 @@ if (usernameInput) {
                 online: true,
                 timestamp: serverTimestamp(),
                 fingerprint: userFingerprint || 'loading',
-                username: username || 'Аноним'
+                username: username
             });
-        }
-    });
-
-    // Добавляем обработчик потери фокуса для сохранения ника
-    usernameInput.addEventListener('blur', async () => {
-        const username = usernameInput.value.trim();
-        if (username && usernameSet) {
-            await savePermanentUsername(username);
         }
     });
 

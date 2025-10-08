@@ -438,6 +438,40 @@ body.dark-theme {
     background: var(--card-bg);
 }
 
+.username-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.confirm-username-btn {
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.confirm-username-btn:hover {
+    background: #10b981;
+    transform: translateY(-1px);
+}
+
+.confirm-username-btn:disabled {
+    background: var(--text-secondary);
+    cursor: not-allowed;
+    transform: none;
+}
+
 .create-post-btn {
     background: var(--reddit-blue);
     color: white;

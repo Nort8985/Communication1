@@ -201,7 +201,12 @@
                 <div class="user-avatar">
                     <i class="fas fa-user-circle"></i>
                 </div>
-                <input type="text" id="username" placeholder="Ваше имя" maxlength="20" class="username-input">
+                <div class="username-section">
+                    <input type="text" id="username" placeholder="Ваше имя" maxlength="20" class="username-input">
+                    <button class="confirm-username-btn" onclick="confirmUsername()" id="confirm-username-btn" style="display: none;">
+                        <i class="fas fa-check"></i> Подтвердить
+                    </button>
+                </div>
                 <button class="create-post-btn" onclick="openPostModal()">
                     <i class="fas fa-plus"></i> Создать пост
                 </button>
