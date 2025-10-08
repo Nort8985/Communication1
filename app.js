@@ -63,334 +63,24 @@ let chatMessages = {};
 let chatListeners = []; // Для хранения слушателей чатов
 let unreadMessages = {}; // Для отслеживания непрочитанных сообщений
 
-// ============ НАДЁЖНАЯ СИСТЕМА ИДЕНТИФИКАЦИИ ============
-
-// IndexedDB для хранения deviceId
-class DeviceStorage {
-    constructor() {
-        this.dbName = 'DevTalk_DeviceDB';
-        this.storeName = 'device_data';
-        this.db = null;
-    }
-
-    async init() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, 1);
-
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                this.db = request.result;
-                resolve();
-            };
-
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(this.storeName)) {
-                    db.createObjectStore(this.storeName);
-                }
-            };
-        });
-    }
-
-    async get(key) {
-        if (!this.db) await this.init();
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readonly');
-            const store = transaction.objectStore(this.storeName);
-            const request = store.get(key);
-
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result);
-        });
-    }
-
-    async set(key, value) {
-        if (!this.db) await this.init();
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-            const request = store.put(value, key);
-
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve();
-        });
-    }
-}
-
-const deviceStorage = new DeviceStorage();
-
-// Генерация уникального deviceId
-function generateDeviceId() {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substr(2, 16);
-    const userAgent = navigator.userAgent.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '');
-    return `${timestamp}_${random}_${userAgent}`.substring(0, 64);
-}
-
-// Получение характеристик браузера для дополнительной идентификации
-function getBrowserFingerprint() {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.textBaseline = 'top';
-    ctx.font = '14px Arial';
-    ctx.fillText('DevTalk_Fingerprint_Test', 2, 2);
-    const canvasFingerprint = canvas.toDataURL();
-
-    // Получаем hardware concurrency (количество ядер CPU)
-    const hardwareConcurrency = navigator.hardwareConcurrency || 'unknown';
-
-    // Получаем device memory (объём оперативной памяти)
-    const deviceMemory = navigator.deviceMemory || 'unknown';
-
-    // Получаем max touch points
-    const maxTouchPoints = navigator.maxTouchPoints || 0;
-
-    // Получаем информацию о батареи (если доступно)
-    let batteryInfo = 'unknown';
-    if ('getBattery' in navigator) {
-        navigator.getBattery().then(battery => {
-            batteryInfo = `${battery.charging}_${battery.level}`;
-        }).catch(() => {});
-    }
-
-    return {
-        userAgent: navigator.userAgent,
-        language: navigator.language,
-        platform: navigator.platform,
-        cookieEnabled: navigator.cookieEnabled,
-        doNotTrack: navigator.doNotTrack,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        screenResolution: `${screen.width}x${screen.height}`,
-        screenAvailResolution: `${screen.availWidth}x${screen.availHeight}`,
-        colorDepth: screen.colorDepth,
-        pixelRatio: window.devicePixelRatio || 1,
-        canvasFingerprint: canvasFingerprint,
-        webglVendor: getWebGLVendor(),
-        webglRenderer: getWebGLRenderer(),
-        plugins: getPluginsFingerprint(),
-        fonts: getFontsFingerprint(),
-        hardwareConcurrency: hardwareConcurrency,
-        deviceMemory: deviceMemory,
-        maxTouchPoints: maxTouchPoints,
-        batteryInfo: batteryInfo,
-        webdriver: navigator.webdriver || false,
-        languages: navigator.languages ? navigator.languages.join(',') : 'unknown'
-    };
-}
-
-function getWebGLVendor() {
+// ============ FINGERPRINT ============
+async function initFingerprint() {
     try {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-        if (!gl) return 'unknown';
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        return debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'unknown';
-    } catch (e) {
-        return 'unknown';
-    }
-}
-
-function getWebGLRenderer() {
-    try {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-        if (!gl) return 'unknown';
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        return debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
-    } catch (e) {
-        return 'unknown';
-    }
-}
-
-function getPluginsFingerprint() {
-    const plugins = [];
-    for (let i = 0; i < navigator.plugins.length; i++) {
-        plugins.push(navigator.plugins[i].name);
-    }
-    return plugins.sort().join(',');
-}
-
-function getFontsFingerprint() {
-    const fonts = [
-        'Arial', 'Arial Black', 'Comic Sans MS', 'Courier New', 'Georgia',
-        'Impact', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Webdings'
-    ];
-    const availableFonts = [];
-
-    fonts.forEach(font => {
-        if (document.fonts.check(`12px "${font}"`)) {
-            availableFonts.push(font);
-        }
-    });
-
-    return availableFonts.join(',');
-}
-
-// Создание хэша из объекта характеристик
-async function hashFingerprint(fingerprint) {
-    const data = JSON.stringify(fingerprint);
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-}
-
-// Инициализация надёжной идентификации устройства
-async function initDeviceIdentification() {
-    try {
-        console.log('🔐 Инициализация надёжной идентификации устройства...');
-
-        // Инициализируем IndexedDB
-        await deviceStorage.init();
-
-        // Пытаемся загрузить существующий deviceId
-        let deviceId = await deviceStorage.get('deviceId');
-        let deviceFingerprint = await deviceStorage.get('deviceFingerprint');
-
-        if (!deviceId) {
-            // Создаём новый deviceId
-            deviceId = generateDeviceId();
-            await deviceStorage.set('deviceId', deviceId);
-            console.log('🆕 Создан новый deviceId:', deviceId);
-        } else {
-            console.log('✅ Загружен существующий deviceId:', deviceId);
-        }
-
-        // Получаем текущие характеристики браузера
-        const currentFingerprint = getBrowserFingerprint();
-
-        if (!deviceFingerprint) {
-            // Сохраняем характеристики при первом посещении
-            const currentFingerprintHash = await hashFingerprint(currentFingerprint);
-            await deviceStorage.set('deviceFingerprint', currentFingerprintHash);
-            await deviceStorage.set('deviceData', currentFingerprint);
-            console.log('📊 Сохранены характеристики устройства');
-        } else {
-            // Проверяем соответствие характеристик (с некоторой гибкостью)
-            const matchScore = await checkFingerprintMatch(deviceFingerprint, currentFingerprint);
-            if (matchScore < 0.6) {
-                console.warn(`⚠️ Характеристики устройства изменились (${(matchScore * 100).toFixed(1)}% схожести), возможно другой браузер/устройство`);
-                // Можно добавить дополнительную логику здесь, например запрос подтверждения
-            } else {
-                console.log(`✅ Устройство подтверждено (${(matchScore * 100).toFixed(1)}% схожести)`);
-            }
-        }
-
-        // Устанавливаем глобальный deviceId
-        userFingerprint = deviceId;
-
-        // Также сохраняем в Service Worker если доступен
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-                type: 'STORE_DEVICE_ID',
-                deviceId: deviceId
-            });
-        }
-
-        // Дополнительная проверка через Service Worker
-        const swDeviceId = await getDeviceIdFromServiceWorker();
-        if (swDeviceId && swDeviceId !== deviceId) {
-            console.warn('⚠️ Несоответствие deviceId между IndexedDB и Service Worker');
-            // Можно добавить логику восстановления
-        }
+        const FingerprintJS = await window.FingerprintJS.load();
+        const result = await FingerprintJS.get();
+        userFingerprint = result.visitorId;
+        console.log('🔑 Fingerprint:', userFingerprint);
 
         startRealtimeStatusMonitoring();
         await recordUserActivity();
 
         fingerprintReady = true;
-        console.log('✅ Надёжная идентификация устройства готова');
-
+        console.log('✅ Fingerprint готов');
     } catch (error) {
-        console.error('❌ Ошибка инициализации идентификации:', error);
-        // Fallback на старую систему
-        userFingerprint = 'fallback_' + Math.random().toString(36).substr(2, 16);
+        console.error('❌ Ошибка Fingerprint:', error);
+        userFingerprint = 'temp_' + Math.random().toString(36).substr(2, 16);
         fingerprintReady = true;
     }
-}
-
-// Проверка соответствия отпечатков (с гибкостью)
-async function checkFingerprintMatch(storedHash, currentFingerprint) {
-    // Получаем сохранённые данные устройства
-    const storedData = await deviceStorage.get('deviceData');
-    if (!storedData) return 0.0;
-
-    const currentHash = await hashFingerprint(currentFingerprint);
-
-    // Если хэши идентичны - полное совпадение
-    if (storedHash === currentHash) return 1.0;
-
-    // Вычисляем коэффициент схожести по ключевым характеристикам
-    let matchScore = 0;
-    let totalChecks = 0;
-
-    // Критически важные характеристики (должны совпадать)
-    const criticalMatches = [
-        storedData.userAgent === currentFingerprint.userAgent,
-        storedData.language === currentFingerprint.language,
-        storedData.platform === currentFingerprint.platform,
-        storedData.timezone === currentFingerprint.timezone,
-        storedData.screenResolution === currentFingerprint.screenResolution,
-        storedData.hardwareConcurrency === currentFingerprint.hardwareConcurrency,
-        storedData.deviceMemory === currentFingerprint.deviceMemory,
-        storedData.webdriver === currentFingerprint.webdriver
-    ];
-
-    criticalMatches.forEach(match => {
-        if (match) matchScore += 0.8; // Критические характеристики весят больше
-        totalChecks += 0.8;
-    });
-
-    // Менее важные характеристики
-    const secondaryMatches = [
-        storedData.colorDepth === currentFingerprint.colorDepth,
-        storedData.pixelRatio === currentFingerprint.pixelRatio,
-        storedData.maxTouchPoints === currentFingerprint.maxTouchPoints,
-        storedData.cookieEnabled === currentFingerprint.cookieEnabled,
-        storedData.plugins === currentFingerprint.plugins,
-        storedData.webglVendor === currentFingerprint.webglVendor,
-        storedData.webglRenderer === currentFingerprint.webglRenderer
-    ];
-
-    secondaryMatches.forEach(match => {
-        if (match) matchScore += 0.4; // Второстепенные характеристики весят меньше
-        totalChecks += 0.4;
-    });
-
-    // Штраф за различия в canvas fingerprint (может меняться при обновлении браузера)
-    if (storedData.canvasFingerprint !== currentFingerprint.canvasFingerprint) {
-        matchScore -= 0.2;
-    }
-
-    const finalScore = Math.max(0, matchScore / totalChecks);
-
-    console.log(`🔍 Схожесть устройства: ${(finalScore * 100).toFixed(1)}%`);
-
-    return finalScore;
-}
-
-// Получение deviceId из Service Worker
-async function getDeviceIdFromServiceWorker() {
-    if (!('serviceWorker' in navigator)) return null;
-
-    return new Promise((resolve) => {
-        const messageChannel = new MessageChannel();
-
-        messageChannel.port1.onmessage = (event) => {
-            resolve(event.data.deviceId);
-        };
-
-        if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-                type: 'GET_DEVICE_ID'
-            }, [messageChannel.port2]);
-        } else {
-            resolve(null);
-        }
-
-        // Таймаут на случай если Service Worker не ответит
-        setTimeout(() => resolve(null), 1000);
-    });
 }
 
 // ============ МОНИТОРИНГ СТАТУСА ============
@@ -440,13 +130,9 @@ async function recordUserActivity() {
     const activityRef = ref(database, `users/${userFingerprint}`);
 
     try {
-        // Получаем текущие данные, чтобы не перезаписывать username если он уже установлен
-        const snapshot = await get(activityRef);
-        const currentData = snapshot.exists() ? snapshot.val() : {};
-
         await set(activityRef, {
             fingerprint: userFingerprint,
-            username: currentData.username || username, // Не перезаписываем существующий username
+            lastUsername: username,
             lastSeen: serverTimestamp(),
             userAgent: navigator.userAgent.substring(0, 200)
         });
@@ -455,63 +141,16 @@ async function recordUserActivity() {
     }
 }
 
-// Загрузка постоянного ника из Firebase
-async function loadPermanentUsername() {
-    if (!userFingerprint) return null;
-
-    try {
-        const userRef = ref(database, `users/${userFingerprint}`);
-        const snapshot = await get(userRef);
-
-        if (snapshot.exists()) {
-            const userData = snapshot.val();
-            return userData.username || null;
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки ника:', error);
-    }
-
-    return null;
-}
-
-// Сохранение постоянного ника в Firebase
-async function savePermanentUsername(username) {
-    if (!userFingerprint || !username) return;
-
-    const userRef = ref(database, `users/${userFingerprint}`);
-
-    try {
-        // Получаем текущие данные пользователя
-        const snapshot = await get(userRef);
-        const currentData = snapshot.exists() ? snapshot.val() : {};
-
-        await set(userRef, {
-            ...currentData,
-            fingerprint: userFingerprint,
-            username: username,
-            lastSeen: serverTimestamp(),
-            userAgent: navigator.userAgent.substring(0, 200)
-        });
-
-        console.log('✅ Постоянный ник сохранен:', username);
-    } catch (error) {
-        console.error('Ошибка сохранения постоянного ника:', error);
-    }
-}
-
 // ============ ОНЛАЙН ============
-let userStatusOnlineRef = null;
+const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+const userStatusOnlineRef = ref(database, `online/${userId}`);
 
 async function initOnlineStatus() {
-    if (!userFingerprint) return;
-
-    userStatusOnlineRef = ref(database, `online/${userFingerprint}`);
-
     try {
         await set(userStatusOnlineRef, {
             online: true,
             timestamp: serverTimestamp(),
-            fingerprint: userFingerprint,
+            fingerprint: userFingerprint || 'loading',
             username: document.getElementById('username')?.value.trim() || 'Аноним'
         });
         onDisconnect(userStatusOnlineRef).remove();
@@ -541,87 +180,34 @@ onValue(onlineRef, (snapshot) => {
 
 // ============ МОБИЛЬНОЕ МЕНЮ ============
 window.toggleMobileMenu = function () {
-    const menu = document.getElementById('mobile-menu');
-    const overlay = document.getElementById('mobile-overlay');
+    const sidebar = document.getElementById('mobile-sidebar');
+    const overlay = document.querySelector('.mobile-overlay');
 
-    if (menu && overlay) {
-        const isOpen = menu.classList.contains('show');
+    if (sidebar && overlay) {
+        sidebar.classList.toggle('show');
+        overlay.classList.toggle('show');
 
-        if (isOpen) {
-            closeMobileMenu();
+        // Блокируем скролл body когда меню открыто
+        if (sidebar.classList.contains('show')) {
+            document.body.style.overflow = 'hidden';
         } else {
-            openMobileMenu();
+            document.body.style.overflow = '';
         }
     }
 };
 
-function openMobileMenu() {
-    const menu = document.getElementById('mobile-menu');
-    const overlay = document.getElementById('mobile-overlay');
-
-    if (menu && overlay) {
-        menu.classList.add('show');
-        overlay.classList.add('show');
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-window.closeMobileMenu = function () {
-    const menu = document.getElementById('mobile-menu');
-    const overlay = document.getElementById('mobile-overlay');
-
-    if (menu && overlay) {
-        menu.classList.remove('show');
-        overlay.classList.remove('show');
-        document.body.style.overflow = '';
-    }
-};
-
-// Обработчик клика по оверлею
-document.addEventListener('DOMContentLoaded', function() {
-    const overlay = document.getElementById('mobile-overlay');
-    const closeBtn = document.getElementById('close-mobile-menu');
-    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-
-    if (overlay) {
-        overlay.addEventListener('click', closeMobileMenu);
-    }
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', closeMobileMenu);
-    }
-
-    if (mobileMenuBtn) {
-        mobileMenuBtn.addEventListener('click', toggleMobileMenu);
-    }
-});
-
 // ============ ТЕМНАЯ ТЕМА ============
 window.toggleTheme = function () {
-    const body = document.body;
-    const themeIcon = document.getElementById('theme-icon');
-    const isDark = body.hasAttribute('data-theme') && body.getAttribute('data-theme') === 'dark';
-
-    if (isDark) {
-        body.removeAttribute('data-theme');
-        if (themeIcon) themeIcon.className = 'fas fa-moon';
-        localStorage.setItem('theme', 'light');
-    } else {
-        body.setAttribute('data-theme', 'dark');
-        if (themeIcon) themeIcon.className = 'fas fa-sun';
-        localStorage.setItem('theme', 'dark');
+    document.body.classList.toggle('dark-theme');
+    const icon = document.getElementById('theme-icon');
+    if (icon) {
+        icon.className = document.body.classList.contains('dark-theme') ? 'fas fa-sun' : 'fas fa-moon';
     }
-
-    // Анимация переключения темы
-    body.style.transition = 'background-color 0.3s ease, color 0.3s ease';
-    setTimeout(() => {
-        body.style.transition = '';
-    }, 300);
+    localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
 };
 
-// Загрузка темы при старте
 if (localStorage.getItem('theme') === 'dark') {
-    document.body.setAttribute('data-theme', 'dark');
+    document.body.classList.add('dark-theme');
     const themeIcon = document.getElementById('theme-icon');
     if (themeIcon) themeIcon.className = 'fas fa-sun';
 }
@@ -652,52 +238,29 @@ function updateAdminUI() {
 
 // ============ МОДАЛЬНЫЕ ОКНА ============
 window.openPostModal = function () {
-    const username = document.getElementById('username')?.value.trim() ||
-                    document.getElementById('mobile-username')?.value.trim();
-
+    const username = document.getElementById('username')?.value.trim();
     if (!username) {
-        showErrorNotification('Введите ваше имя!', 3000);
-        // Фокус на поле имени
-        const usernameInput = document.getElementById('username') || document.getElementById('mobile-username');
-        if (usernameInput) {
-            usernameInput.focus();
-            usernameInput.classList.add('shake');
-            setTimeout(() => usernameInput.classList.remove('shake'), 500);
-        }
+        alert('Введите ваше имя!');
         return;
     }
 
     if (userStatus.banned) {
-        showErrorNotification('Вы забанены и не можете создавать посты!', 5000);
+        alert('❌ Вы забанены и не можете создавать посты!');
         return;
     }
 
     if (userStatus.muted) {
-        showErrorNotification('Вы замучены и не можете создавать посты!', 5000);
+        alert('❌ Вы замучены и не можете создавать посты!');
         return;
     }
 
-    const modal = document.getElementById('post-modal');
-    if (modal) {
-        modal.classList.add('show');
-        // Фокус на заголовке
-        setTimeout(() => {
-            const titleInput = document.getElementById('post-title');
-            if (titleInput) titleInput.focus();
-        }, 300);
-    }
+    document.getElementById('post-modal').classList.add('show');
 };
 
 window.closePostModal = function () {
-    const modal = document.getElementById('post-modal');
-    if (modal) {
-        modal.classList.remove('show');
-        // Очистка формы
-        const titleInput = document.getElementById('post-title');
-        const textInput = document.getElementById('post-text');
-        if (titleInput) titleInput.value = '';
-        if (textInput) textInput.value = '';
-    }
+    document.getElementById('post-modal').classList.remove('show');
+    document.getElementById('post-title').value = '';
+    document.getElementById('post-text').value = '';
 };
 
 window.openAdminPanel = function () {
@@ -717,37 +280,22 @@ window.closeAdminPanel = function () {
 // ============ ФУНКЦИИ ЧАТОВ ============
 window.toggleChats = function () {
     if (!fingerprintReady) {
-        showInfoNotification('Загрузка... Попробуйте через секунду', 2000);
+        alert('⏳ Загрузка... Попробуйте через секунду');
         return;
     }
 
-    const username = document.getElementById('username')?.value.trim() ||
-                    document.getElementById('mobile-username')?.value.trim();
-
+    const username = document.getElementById('username')?.value.trim();
     if (!username) {
-        showErrorNotification('Введите ваше имя!', 3000);
-        const usernameInput = document.getElementById('username') || document.getElementById('mobile-username');
-        if (usernameInput) {
-            usernameInput.focus();
-            usernameInput.classList.add('shake');
-            setTimeout(() => usernameInput.classList.remove('shake'), 500);
-        }
+        alert('Введите ваше имя!');
         return;
     }
 
-    const modal = document.getElementById('chats-modal');
-    if (modal) {
-        modal.classList.add('show');
-        loadUserChats();
-    }
+    document.getElementById('chats-modal').classList.add('show');
+    loadUserChats();
 };
 
 window.closeChatsModal = function () {
-    const modal = document.getElementById('chats-modal');
-    if (modal) {
-        modal.classList.remove('show');
-    }
-
+    document.getElementById('chats-modal').classList.remove('show');
     currentChatId = null;
 
     // Очищаем все слушатели чатов и fallback интервалы
@@ -1478,19 +1026,19 @@ function loadAllUsers() {
             item.innerHTML = `
                 <div class="admin-item-header">
                     <div class="admin-item-title">
-                        ${escapeHtml(user.username || 'Аноним')}
-                        ${user.username === 'Nort89855' ? '<span class="status-badge admin">ADMIN</span>' : ''}
+                        ${escapeHtml(user.lastUsername || 'Аноним')}
+                        ${user.lastUsername === 'Nort89855' ? '<span class="status-badge admin">ADMIN</span>' : ''}
                         ${isBanned ? '<span class="status-badge banned">BANNED</span>' : ''}
                         ${isMuted ? '<span class="status-badge muted">MUTED</span>' : ''}
                     </div>
                 </div>
                 <div class="admin-item-info">
                     <strong>ID:</strong> ${userId.substring(0, 30)}...<br>
-                    <strong>Последняя активность:</strong> ${user.lastSeen ? getTimeAgo(new Date(user.lastSeen)) : 'Недавно'}
+                    <strong>Последняя активность:</strong> Недавно
                 </div>
                 <div class="admin-item-actions">
                     ${!isBanned ? `
-                        <button style="background: #F44336;" onclick="banUserById('${userId}', '${escapeHtml(user.username)}')">
+                        <button style="background: #F44336;" onclick="banUserById('${userId}', '${escapeHtml(user.lastUsername)}')">
                             <i class="fas fa-ban"></i> Забанить
                         </button>
                     ` : `
@@ -1499,7 +1047,7 @@ function loadAllUsers() {
                         </button>
                     `}
                     ${!isMuted ? `
-                        <button style="background: #FF9800;" onclick="muteUserById('${userId}', '${escapeHtml(user.username)}')">
+                        <button style="background: #FF9800;" onclick="muteUserById('${userId}', '${escapeHtml(user.lastUsername)}')">
                             <i class="fas fa-volume-mute"></i> Замутить
                         </button>
                     ` : `
@@ -1509,9 +1057,6 @@ function loadAllUsers() {
                     `}
                     <button style="background: #757575;" onclick="deleteAllUserPosts('${userId}')">
                         <i class="fas fa-trash"></i> Удалить посты
-                    </button>
-                    <button style="background: #9C27B0;" onclick="changeUserUsername('${userId}', '${escapeHtml(user.username)}')">
-                        <i class="fas fa-user-edit"></i> Изменить ник
                     </button>
                 </div>
             `;
@@ -2059,59 +1604,6 @@ window.deleteAllUserPosts = async function (fingerprint) {
     }
 };
 
-window.changeUserUsername = async function (fingerprint, currentUsername) {
-    if (!isAdmin()) {
-        alert('❌ У вас нет прав!');
-        return;
-    }
-
-    const newUsername = prompt(`Изменить ник пользователя "${currentUsername}" на:`, currentUsername);
-    if (!newUsername || newUsername.trim() === currentUsername) return;
-
-    const trimmedUsername = newUsername.trim();
-    if (!trimmedUsername) {
-        alert('Ник не может быть пустым!');
-        return;
-    }
-
-    if (!confirm(`Вы уверены, что хотите изменить ник "${currentUsername}" на "${trimmedUsername}"?\n\nЭто действие необратимо!`)) {
-        return;
-    }
-
-    try {
-        const userRef = ref(database, `users/${fingerprint}`);
-        const snapshot = await get(userRef);
-
-        if (!snapshot.exists()) {
-            alert('Пользователь не найден!');
-            return;
-        }
-
-        const userData = snapshot.val();
-        await set(userRef, {
-            ...userData,
-            username: trimmedUsername,
-            lastSeen: serverTimestamp()
-        });
-
-        // Обновляем онлайн статус если пользователь онлайн
-        const onlineRef = ref(database, `online/${fingerprint}`);
-        const onlineSnapshot = await get(onlineRef);
-        if (onlineSnapshot.exists()) {
-            const onlineData = onlineSnapshot.val();
-            await set(onlineRef, {
-                ...onlineData,
-                username: trimmedUsername
-            });
-        }
-
-        alert(`✅ Ник пользователя изменен на "${trimmedUsername}"`);
-        loadAllUsers(); // Перезагружаем список пользователей
-    } catch (error) {
-        alert('Ошибка изменения ника: ' + error.message);
-    }
-};
-
 // ============ УТИЛИТЫ ============
 function escapeHtml(text) {
     if (!text) return '';
@@ -2151,75 +1643,25 @@ function clearUsername() {
 }
 
 // ============ ГЛОБАЛЬНАЯ ФУНКЦИЯ ДЛЯ ОЧИСТКИ НИКА ============
-window.clearSavedUsername = async function () {
+window.clearSavedUsername = function () {
     if (confirm('Вы уверены, что хотите очистить сохраненный ник? При следующем посещении сайта поле имени будет пустым.')) {
-        if (!userFingerprint) {
-            alert('Ошибка: fingerprint не загружен');
-            return;
+        clearUsername();
+        const usernameInput = document.getElementById('username');
+        if (usernameInput) {
+            usernameInput.value = '';
+            usernameInput.focus();
         }
-
-        try {
-            // Удаляем ник из Firebase
-            const userRef = ref(database, `users/${userFingerprint}`);
-            const snapshot = await get(userRef);
-            if (snapshot.exists()) {
-                const userData = snapshot.val();
-                // Удаляем только поле username, сохраняя другие данные
-                const { username, ...otherData } = userData;
-                await set(userRef, {
-                    ...otherData,
-                    lastSeen: serverTimestamp()
-                });
-            }
-
-            // Очищаем поле ввода
-            const usernameInput = document.getElementById('username');
-            const confirmUsernameBtn = document.getElementById('confirm-username-btn');
-            if (usernameInput) {
-                usernameInput.value = '';
-                usernameInput.focus();
-            }
-            if (confirmUsernameBtn) {
-                confirmUsernameBtn.style.display = 'none';
-            }
-
-            // Обновляем онлайн статус
-            if (userStatusOnlineRef) {
-                set(userStatusOnlineRef, {
-                    online: true,
-                    timestamp: serverTimestamp(),
-                    fingerprint: userFingerprint,
-                    username: 'Аноним'
-                });
-            }
-
-            alert('✅ Сохраненный ник очищен!');
-        } catch (error) {
-            console.error('Ошибка очистки ника:', error);
-            alert('Ошибка: ' + error.message);
-        }
+        alert('✅ Сохраненный ник очищен!');
     }
 };
 
-// ============ HEADER ACTIONS ============
-window.handleCreateBtn = function () {
-    openPostModal();
-};
-
-window.handleNotificationsBtn = function () {
+// ============ СИСТЕМА УВЕДОМЛЕНИЙ ============
+// Показать/скрыть уведомления
+window.toggleNotifications = function () {
     const notifications = document.getElementById('notifications');
     if (notifications) {
         notifications.classList.toggle('show');
     }
-};
-
-window.handleChatsBtn = function () {
-    toggleChats();
-};
-
-// ============ СИСТЕМА УВЕДОМЛЕНИЙ ============
-window.toggleNotifications = function () {
-    handleNotificationsBtn();
 };
 
 // Прокрутка к началу страницы
@@ -2345,7 +1787,7 @@ function addNotification(type, title, message, duration = 5000) {
 
     notificationsContainer.appendChild(notification);
 
-    // Показываем уведомление с анимацией
+    // Показываем уведомление
     setTimeout(() => {
         notification.classList.add('show');
     }, 100);
@@ -2682,13 +2124,10 @@ async function checkFirebaseConnection() {
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('🚀 Инициализация DevTalk...');
+    console.log('🚀 Инициализация с поддержкой реального времени...');
     console.log('📱 Платформа:', navigator.platform);
     console.log('🌐 User Agent:', navigator.userAgent);
     console.log('🔗 Online:', navigator.onLine);
-
-    // Инициализируем интерфейс
-    initInterface();
 
     // Попытка инициализации с повторными попытками и таймаутом
     let retries = 3;
@@ -2704,7 +2143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     throw new Error('Не удается подключиться к серверу Firebase');
                 }
 
-                await initDeviceIdentification();
+                await initFingerprint();
                 await initOnlineStatus();
                 initialized = true;
                 console.log('✅ Инициализация успешна - все данные обновляются в реальном времени');
@@ -2739,122 +2178,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!initialized) {
         console.error('❌ Не удалось инициализировать приложение после нескольких попыток');
         showConnectionError();
-        return;
     }
-
-    // После успешной инициализации загружаем ник
-    await loadAndSetupUsername();
-
-    // Показываем приветственное уведомление
-    setTimeout(() => {
-        showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
-    }, 1000);
 });
-
-// ============ ЗАГРУЗКА ПОСТОЯННОГО НИКА ============
-async function loadAndSetupUsername() {
-    const usernameInput = document.getElementById('username');
-    const confirmUsernameBtn = document.getElementById('confirm-username-btn');
-
-    if (!usernameInput || !confirmUsernameBtn) return;
-
-    try {
-        // Ждем пока deviceId будет готов
-        let attempts = 0;
-        while (!userFingerprint && attempts < 50) { // Максимум 5 секунд ожидания
-            await new Promise(resolve => setTimeout(resolve, 100));
-            attempts++;
-        }
-
-        if (!userFingerprint) {
-            console.warn('DeviceId не загружен, пропускаем загрузку ника');
-            confirmUsernameBtn.style.display = 'flex';
-            return;
-        }
-
-        // Загружаем постоянный ник
-        const permanentUsername = await loadPermanentUsername();
-        if (permanentUsername) {
-            usernameInput.value = permanentUsername;
-            confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку, если ник уже установлен
-            console.log('✅ Загружен постоянный ник:', permanentUsername);
-        } else {
-            confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку, если ник не установлен
-            console.log('ℹ️ Ник не установлен, показываем кнопку подтверждения');
-        }
-
-        let usernameSet = !!permanentUsername; // Флаг, был ли ник уже установлен
-
-        // Обработчик ввода - просто обновляем UI
-        usernameInput.addEventListener('input', () => {
-            const username = usernameInput.value.trim();
-
-            if (username && !usernameSet) {
-                confirmUsernameBtn.style.display = 'flex'; // Показываем кнопку подтверждения
-            } else if (!username) {
-                confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку если поле пустое
-            }
-
-            updateAdminUI();
-        });
-
-        // Обработчик кнопки подтверждения
-        confirmUsernameBtn.addEventListener('click', async () => {
-            const username = usernameInput.value.trim();
-
-            if (!username) {
-                alert('Введите имя!');
-                return;
-            }
-
-            // Показываем предупреждение
-            const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
-            if (!confirmed) {
-                return;
-            }
-
-            usernameSet = true;
-
-            // Сохраняем постоянный ник
-            await savePermanentUsername(username);
-            confirmUsernameBtn.style.display = 'none'; // Скрываем кнопку после подтверждения
-            showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
-
-            updateAdminUI();
-            await recordUserActivity();
-
-            // Обновляем имя в онлайн статусе
-            if (userStatusOnlineRef) {
-                set(userStatusOnlineRef, {
-                    online: true,
-                    timestamp: serverTimestamp(),
-                    fingerprint: userFingerprint,
-                    username: username
-                });
-            }
-        });
-
-        // Добавляем обработчик Enter для отправки комментариев
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.ctrlKey) {
-                const activeElement = document.activeElement;
-                if (activeElement && activeElement.classList.contains('comment-input')) {
-                    const postId = activeElement.id.replace('comment-text-', '');
-                    if (postId) {
-                        e.preventDefault();
-                        submitComment(postId);
-                    }
-                }
-            }
-        });
-
-        updateAdminUI();
-
-    } catch (error) {
-        console.error('Ошибка настройки ника:', error);
-        confirmUsernameBtn.style.display = 'flex';
-    }
-}
 
 // Показать ошибку подключения
 function showConnectionError() {
@@ -2965,6 +2290,69 @@ window.checkConnection = async function () {
     }
 };
 
+const usernameInput = document.getElementById('username');
+if (usernameInput) {
+    // Загружаем сохраненный ник при старте
+    const savedUsername = loadUsername();
+    if (savedUsername) {
+        usernameInput.value = savedUsername;
+        updateAdminUI();
+        await recordUserActivity();
+
+        // Обновляем онлайн статус с сохраненным именем
+        set(userStatusOnlineRef, {
+            online: true,
+            timestamp: serverTimestamp(),
+            fingerprint: userFingerprint || 'loading',
+            username: savedUsername
+        });
+    }
+
+    usernameInput.addEventListener('input', () => {
+        const username = usernameInput.value.trim();
+
+        // Сохраняем ник при вводе
+        if (username) {
+            saveUsername(username);
+        }
+
+        updateAdminUI();
+        recordUserActivity();
+
+        // Обновляем имя в онлайн статусе
+        set(userStatusOnlineRef, {
+            online: true,
+            timestamp: serverTimestamp(),
+            fingerprint: userFingerprint || 'loading',
+            username: username || 'Аноним'
+        });
+    });
+
+    // Добавляем обработчик потери фокуса для сохранения ника
+    usernameInput.addEventListener('blur', () => {
+        const username = usernameInput.value.trim();
+        if (username) {
+            saveUsername(username);
+        }
+    });
+
+    // Добавляем обработчик Enter для отправки комментариев
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+            const activeElement = document.activeElement;
+            if (activeElement && activeElement.classList.contains('comment-input')) {
+                const postId = activeElement.id.replace('comment-text-', '');
+                if (postId) {
+                    e.preventDefault();
+                    submitComment(postId);
+                }
+            }
+        }
+    });
+
+    updateAdminUI();
+}
+
 // Экран загрузки скрывается автоматически после успешной инициализации
 console.log('✅ DevTalk готов! Все данные обновляются в реальном времени');
 
@@ -2973,191 +2361,10 @@ setInterval(() => {
     console.log('🔄 DevTalk работает в реальном времени - все данные синхронизированы');
 }, 60000); // Каждую минуту
 
-// ============ ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ============
-function initInterface() {
-    // Обработчики для header кнопок
-    const createBtn = document.getElementById('create-btn');
-    const notificationsBtn = document.getElementById('notifications-btn');
-    const chatsBtn = document.getElementById('chats-btn');
-    const themeBtn = document.getElementById('theme-btn');
-
-    if (createBtn) createBtn.addEventListener('click', handleCreateBtn);
-    if (notificationsBtn) notificationsBtn.addEventListener('click', handleNotificationsBtn);
-    if (chatsBtn) chatsBtn.addEventListener('click', handleChatsBtn);
-    if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
-
-    // Обработчики для мобильного меню
-    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-    const closeMobileMenuBtn = document.getElementById('close-mobile-menu');
-    const mobileOverlay = document.getElementById('mobile-overlay');
-
-    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
-    if (closeMobileMenuBtn) closeMobileMenuBtn.addEventListener('click', closeMobileMenu);
-    if (mobileOverlay) mobileOverlay.addEventListener('click', closeMobileMenu);
-
-    // Обработчик для мобильного имени
-    const mobileUsername = document.getElementById('mobile-username');
-    const mobileConfirmBtn = document.getElementById('mobile-confirm-username');
-
-    if (mobileUsername) {
-        mobileUsername.addEventListener('input', handleMobileUsernameInput);
-        mobileUsername.addEventListener('blur', handleMobileUsernameBlur);
-    }
-
-    if (mobileConfirmBtn) {
-        mobileConfirmBtn.addEventListener('click', confirmMobileUsername);
-    }
-
-    // Обработчик для основного имени
-    const usernameInput = document.getElementById('username');
-    const confirmUsernameBtn = document.getElementById('confirm-username');
-
-    if (usernameInput) {
-        usernameInput.addEventListener('input', handleUsernameInput);
-        usernameInput.addEventListener('blur', handleUsernameBlur);
-    }
-
-    if (confirmUsernameBtn) {
-        confirmUsernameBtn.addEventListener('click', confirmUsername);
-    }
-
-    // Анимация загрузки
-    setTimeout(() => {
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-            loadingScreen.style.opacity = '0';
-            setTimeout(() => {
-                loadingScreen.style.display = 'none';
-            }, 300);
-        }
-    }, 1000);
-
-    console.log('✅ Интерфейс инициализирован');
-}
-
-// ============ HEADER ACTIONS ============
-window.handleCreateBtn = function () {
-    openPostModal();
-};
-
-window.handleNotificationsBtn = function () {
-    const notifications = document.getElementById('notifications');
-    if (notifications) {
-        notifications.classList.toggle('show');
-    }
-};
-
-window.handleChatsBtn = function () {
-    toggleChats();
-};
-
-// ============ ОБРАБОТЧИКИ ИМЕНИ ПОЛЬЗОВАТЕЛЯ ============
-function handleMobileUsernameInput() {
-    const input = document.getElementById('mobile-username');
-    const confirmBtn = document.getElementById('mobile-confirm-username');
-
-    if (input && confirmBtn) {
-        const value = input.value.trim();
-        confirmBtn.style.display = value ? 'flex' : 'none';
-    }
-}
-
-function handleUsernameInput() {
-    const input = document.getElementById('username');
-    const confirmBtn = document.getElementById('confirm-username');
-
-    if (input && confirmBtn) {
-        const value = input.value.trim();
-        confirmBtn.style.display = value ? 'flex' : 'none';
-    }
-}
-
-function handleMobileUsernameBlur() {
-    const input = document.getElementById('mobile-username');
-    if (input) {
-        const value = input.value.trim();
-        if (value) {
-            confirmMobileUsername();
-        }
-    }
-}
-
-function handleUsernameBlur() {
-    const input = document.getElementById('username');
-    if (input) {
-        const value = input.value.trim();
-        if (value) {
-            confirmUsername();
-        }
-    }
-}
-
-async function confirmMobileUsername() {
-    const input = document.getElementById('mobile-username');
-    if (!input) return;
-
-    const username = input.value.trim();
-    if (!username) return;
-
-    await confirmUsernameCore(username, input, 'mobile-username');
-}
-
-async function confirmUsername() {
-    const input = document.getElementById('username');
-    if (!input) return;
-
-    const username = input.value.trim();
-    if (!username) return;
-
-    await confirmUsernameCore(username, input, 'username');
-}
-
-async function confirmUsernameCore(username, inputElement, inputId) {
-    // Проверяем, установлено ли уже имя
-    const permanentUsername = await loadPermanentUsername();
-
-    if (!permanentUsername) {
-        // Первое установление имени - показываем предупреждение
-        const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
-
-        if (!confirmed) {
-            inputElement.value = '';
-            const confirmBtn = document.getElementById(inputId === 'mobile-username' ? 'mobile-confirm-username' : 'confirm-username');
-            if (confirmBtn) confirmBtn.style.display = 'none';
-            return;
-        }
-
-        // Сохраняем постоянное имя
-        await savePermanentUsername(username);
-        showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
-
-        // Синхронизируем с другим полем ввода
-        const otherInput = document.getElementById(inputId === 'mobile-username' ? 'username' : 'mobile-username');
-        if (otherInput) otherInput.value = username;
-
-    } else {
-        // Имя уже установлено - просто обновляем
-        await savePermanentUsername(username);
-    }
-
-    // Скрываем кнопку подтверждения
-    const confirmBtn = document.getElementById(inputId === 'mobile-username' ? 'mobile-confirm-username' : 'confirm-username');
-    if (confirmBtn) confirmBtn.style.display = 'none';
-
-    // Обновляем интерфейс
-    updateAdminUI();
-    await recordUserActivity();
-
-    // Обновляем онлайн статус
-    if (userStatusOnlineRef) {
-        set(userStatusOnlineRef, {
-            online: true,
-            timestamp: serverTimestamp(),
-            fingerprint: userFingerprint || 'loading',
-            username: username
-        });
-    }
-}
+// Показываем приветственное уведомление
+setTimeout(() => {
+    showSuccessNotification('Добро пожаловать в DevTalk! 🎉', 3000);
+}, 1000);
 
 // ============ МОБИЛЬНЫЕ ОПТИМИЗАЦИИ ============
 // Предотвращаем зум при двойном тапе на iOS (полезно и для Android)

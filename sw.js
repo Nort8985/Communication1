@@ -131,27 +131,4 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-
-  if (event.data && event.data.type === 'STORE_DEVICE_ID') {
-    // Сохраняем deviceId в Cache Storage для дополнительной надёжности
-    const deviceId = event.data.deviceId;
-    caches.open('device-data-v1').then(cache => {
-      const response = new Response(JSON.stringify({ deviceId, timestamp: Date.now() }));
-      cache.put('/device-id', response);
-      console.log('💾 Service Worker: deviceId сохранён в cache');
-    });
-  }
-
-  if (event.data && event.data.type === 'GET_DEVICE_ID') {
-    // Возвращаем deviceId из cache
-    caches.match('/device-id').then(response => {
-      if (response) {
-        response.json().then(data => {
-          event.ports[0].postMessage({ deviceId: data.deviceId });
-        });
-      } else {
-        event.ports[0].postMessage({ deviceId: null });
-      }
-    });
-  }
 });
