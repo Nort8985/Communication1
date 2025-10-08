@@ -63,24 +63,334 @@ let chatMessages = {};
 let chatListeners = []; // Для хранения слушателей чатов
 let unreadMessages = {}; // Для отслеживания непрочитанных сообщений
 
-// ============ FINGERPRINT ============
-async function initFingerprint() {
+// ============ НАДЁЖНАЯ СИСТЕМА ИДЕНТИФИКАЦИИ ============
+
+// IndexedDB для хранения deviceId
+class DeviceStorage {
+    constructor() {
+        this.dbName = 'DevTalk_DeviceDB';
+        this.storeName = 'device_data';
+        this.db = null;
+    }
+
+    async init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.dbName, 1);
+
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                this.db = request.result;
+                resolve();
+            };
+
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(this.storeName)) {
+                    db.createObjectStore(this.storeName);
+                }
+            };
+        });
+    }
+
+    async get(key) {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const request = store.get(key);
+
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+        });
+    }
+
+    async set(key, value) {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+            const request = store.put(value, key);
+
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve();
+        });
+    }
+}
+
+const deviceStorage = new DeviceStorage();
+
+// Генерация уникального deviceId
+function generateDeviceId() {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substr(2, 16);
+    const userAgent = navigator.userAgent.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '');
+    return `${timestamp}_${random}_${userAgent}`.substring(0, 64);
+}
+
+// Получение характеристик браузера для дополнительной идентификации
+function getBrowserFingerprint() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillText('DevTalk_Fingerprint_Test', 2, 2);
+    const canvasFingerprint = canvas.toDataURL();
+
+    // Получаем hardware concurrency (количество ядер CPU)
+    const hardwareConcurrency = navigator.hardwareConcurrency || 'unknown';
+
+    // Получаем device memory (объём оперативной памяти)
+    const deviceMemory = navigator.deviceMemory || 'unknown';
+
+    // Получаем max touch points
+    const maxTouchPoints = navigator.maxTouchPoints || 0;
+
+    // Получаем информацию о батареи (если доступно)
+    let batteryInfo = 'unknown';
+    if ('getBattery' in navigator) {
+        navigator.getBattery().then(battery => {
+            batteryInfo = `${battery.charging}_${battery.level}`;
+        }).catch(() => {});
+    }
+
+    return {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        platform: navigator.platform,
+        cookieEnabled: navigator.cookieEnabled,
+        doNotTrack: navigator.doNotTrack,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        screenResolution: `${screen.width}x${screen.height}`,
+        screenAvailResolution: `${screen.availWidth}x${screen.availHeight}`,
+        colorDepth: screen.colorDepth,
+        pixelRatio: window.devicePixelRatio || 1,
+        canvasFingerprint: canvasFingerprint,
+        webglVendor: getWebGLVendor(),
+        webglRenderer: getWebGLRenderer(),
+        plugins: getPluginsFingerprint(),
+        fonts: getFontsFingerprint(),
+        hardwareConcurrency: hardwareConcurrency,
+        deviceMemory: deviceMemory,
+        maxTouchPoints: maxTouchPoints,
+        batteryInfo: batteryInfo,
+        webdriver: navigator.webdriver || false,
+        languages: navigator.languages ? navigator.languages.join(',') : 'unknown'
+    };
+}
+
+function getWebGLVendor() {
     try {
-        const FingerprintJS = await window.FingerprintJS.load();
-        const result = await FingerprintJS.get();
-        userFingerprint = result.visitorId;
-        console.log('🔑 Fingerprint:', userFingerprint);
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) return 'unknown';
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        return debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'unknown';
+    } catch (e) {
+        return 'unknown';
+    }
+}
+
+function getWebGLRenderer() {
+    try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) return 'unknown';
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        return debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
+    } catch (e) {
+        return 'unknown';
+    }
+}
+
+function getPluginsFingerprint() {
+    const plugins = [];
+    for (let i = 0; i < navigator.plugins.length; i++) {
+        plugins.push(navigator.plugins[i].name);
+    }
+    return plugins.sort().join(',');
+}
+
+function getFontsFingerprint() {
+    const fonts = [
+        'Arial', 'Arial Black', 'Comic Sans MS', 'Courier New', 'Georgia',
+        'Impact', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Webdings'
+    ];
+    const availableFonts = [];
+
+    fonts.forEach(font => {
+        if (document.fonts.check(`12px "${font}"`)) {
+            availableFonts.push(font);
+        }
+    });
+
+    return availableFonts.join(',');
+}
+
+// Создание хэша из объекта характеристик
+async function hashFingerprint(fingerprint) {
+    const data = JSON.stringify(fingerprint);
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+}
+
+// Инициализация надёжной идентификации устройства
+async function initDeviceIdentification() {
+    try {
+        console.log('🔐 Инициализация надёжной идентификации устройства...');
+
+        // Инициализируем IndexedDB
+        await deviceStorage.init();
+
+        // Пытаемся загрузить существующий deviceId
+        let deviceId = await deviceStorage.get('deviceId');
+        let deviceFingerprint = await deviceStorage.get('deviceFingerprint');
+
+        if (!deviceId) {
+            // Создаём новый deviceId
+            deviceId = generateDeviceId();
+            await deviceStorage.set('deviceId', deviceId);
+            console.log('🆕 Создан новый deviceId:', deviceId);
+        } else {
+            console.log('✅ Загружен существующий deviceId:', deviceId);
+        }
+
+        // Получаем текущие характеристики браузера
+        const currentFingerprint = getBrowserFingerprint();
+
+        if (!deviceFingerprint) {
+            // Сохраняем характеристики при первом посещении
+            const currentFingerprintHash = await hashFingerprint(currentFingerprint);
+            await deviceStorage.set('deviceFingerprint', currentFingerprintHash);
+            await deviceStorage.set('deviceData', currentFingerprint);
+            console.log('📊 Сохранены характеристики устройства');
+        } else {
+            // Проверяем соответствие характеристик (с некоторой гибкостью)
+            const matchScore = await checkFingerprintMatch(deviceFingerprint, currentFingerprint);
+            if (matchScore < 0.6) {
+                console.warn(`⚠️ Характеристики устройства изменились (${(matchScore * 100).toFixed(1)}% схожести), возможно другой браузер/устройство`);
+                // Можно добавить дополнительную логику здесь, например запрос подтверждения
+            } else {
+                console.log(`✅ Устройство подтверждено (${(matchScore * 100).toFixed(1)}% схожести)`);
+            }
+        }
+
+        // Устанавливаем глобальный deviceId
+        userFingerprint = deviceId;
+
+        // Также сохраняем в Service Worker если доступен
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'STORE_DEVICE_ID',
+                deviceId: deviceId
+            });
+        }
+
+        // Дополнительная проверка через Service Worker
+        const swDeviceId = await getDeviceIdFromServiceWorker();
+        if (swDeviceId && swDeviceId !== deviceId) {
+            console.warn('⚠️ Несоответствие deviceId между IndexedDB и Service Worker');
+            // Можно добавить логику восстановления
+        }
 
         startRealtimeStatusMonitoring();
         await recordUserActivity();
 
         fingerprintReady = true;
-        console.log('✅ Fingerprint готов');
+        console.log('✅ Надёжная идентификация устройства готова');
+
     } catch (error) {
-        console.error('❌ Ошибка Fingerprint:', error);
-        userFingerprint = 'temp_' + Math.random().toString(36).substr(2, 16);
+        console.error('❌ Ошибка инициализации идентификации:', error);
+        // Fallback на старую систему
+        userFingerprint = 'fallback_' + Math.random().toString(36).substr(2, 16);
         fingerprintReady = true;
     }
+}
+
+// Проверка соответствия отпечатков (с гибкостью)
+async function checkFingerprintMatch(storedHash, currentFingerprint) {
+    // Получаем сохранённые данные устройства
+    const storedData = await deviceStorage.get('deviceData');
+    if (!storedData) return 0.0;
+
+    const currentHash = await hashFingerprint(currentFingerprint);
+
+    // Если хэши идентичны - полное совпадение
+    if (storedHash === currentHash) return 1.0;
+
+    // Вычисляем коэффициент схожести по ключевым характеристикам
+    let matchScore = 0;
+    let totalChecks = 0;
+
+    // Критически важные характеристики (должны совпадать)
+    const criticalMatches = [
+        storedData.userAgent === currentFingerprint.userAgent,
+        storedData.language === currentFingerprint.language,
+        storedData.platform === currentFingerprint.platform,
+        storedData.timezone === currentFingerprint.timezone,
+        storedData.screenResolution === currentFingerprint.screenResolution,
+        storedData.hardwareConcurrency === currentFingerprint.hardwareConcurrency,
+        storedData.deviceMemory === currentFingerprint.deviceMemory,
+        storedData.webdriver === currentFingerprint.webdriver
+    ];
+
+    criticalMatches.forEach(match => {
+        if (match) matchScore += 0.8; // Критические характеристики весят больше
+        totalChecks += 0.8;
+    });
+
+    // Менее важные характеристики
+    const secondaryMatches = [
+        storedData.colorDepth === currentFingerprint.colorDepth,
+        storedData.pixelRatio === currentFingerprint.pixelRatio,
+        storedData.maxTouchPoints === currentFingerprint.maxTouchPoints,
+        storedData.cookieEnabled === currentFingerprint.cookieEnabled,
+        storedData.plugins === currentFingerprint.plugins,
+        storedData.webglVendor === currentFingerprint.webglVendor,
+        storedData.webglRenderer === currentFingerprint.webglRenderer
+    ];
+
+    secondaryMatches.forEach(match => {
+        if (match) matchScore += 0.4; // Второстепенные характеристики весят меньше
+        totalChecks += 0.4;
+    });
+
+    // Штраф за различия в canvas fingerprint (может меняться при обновлении браузера)
+    if (storedData.canvasFingerprint !== currentFingerprint.canvasFingerprint) {
+        matchScore -= 0.2;
+    }
+
+    const finalScore = Math.max(0, matchScore / totalChecks);
+
+    console.log(`🔍 Схожесть устройства: ${(finalScore * 100).toFixed(1)}%`);
+
+    return finalScore;
+}
+
+// Получение deviceId из Service Worker
+async function getDeviceIdFromServiceWorker() {
+    if (!('serviceWorker' in navigator)) return null;
+
+    return new Promise((resolve) => {
+        const messageChannel = new MessageChannel();
+
+        messageChannel.port1.onmessage = (event) => {
+            resolve(event.data.deviceId);
+        };
+
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'GET_DEVICE_ID'
+            }, [messageChannel.port2]);
+        } else {
+            resolve(null);
+        }
+
+        // Таймаут на случай если Service Worker не ответит
+        setTimeout(() => resolve(null), 1000);
+    });
 }
 
 // ============ МОНИТОРИНГ СТАТУСА ============
@@ -2288,7 +2598,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     throw new Error('Не удается подключиться к серверу Firebase');
                 }
 
-                await initFingerprint();
+                await initDeviceIdentification();
                 await initOnlineStatus();
                 initialized = true;
                 console.log('✅ Инициализация успешна - все данные обновляются в реальном времени');
@@ -2343,7 +2653,7 @@ async function loadAndSetupUsername() {
     if (!usernameInput || !confirmUsernameBtn) return;
 
     try {
-        // Ждем пока fingerprint будет готов
+        // Ждем пока deviceId будет готов
         let attempts = 0;
         while (!userFingerprint && attempts < 50) { // Максимум 5 секунд ожидания
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -2351,7 +2661,7 @@ async function loadAndSetupUsername() {
         }
 
         if (!userFingerprint) {
-            console.warn('Fingerprint не загружен, пропускаем загрузку ника');
+            console.warn('DeviceId не загружен, пропускаем загрузку ника');
             confirmUsernameBtn.style.display = 'flex';
             return;
         }
