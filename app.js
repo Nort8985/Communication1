@@ -541,34 +541,87 @@ onValue(onlineRef, (snapshot) => {
 
 // ============ МОБИЛЬНОЕ МЕНЮ ============
 window.toggleMobileMenu = function () {
-    const sidebar = document.getElementById('mobile-sidebar');
-    const overlay = document.querySelector('.mobile-overlay');
+    const menu = document.getElementById('mobile-menu');
+    const overlay = document.getElementById('mobile-overlay');
 
-    if (sidebar && overlay) {
-        sidebar.classList.toggle('show');
-        overlay.classList.toggle('show');
+    if (menu && overlay) {
+        const isOpen = menu.classList.contains('show');
 
-        // Блокируем скролл body когда меню открыто
-        if (sidebar.classList.contains('show')) {
-            document.body.style.overflow = 'hidden';
+        if (isOpen) {
+            closeMobileMenu();
         } else {
-            document.body.style.overflow = '';
+            openMobileMenu();
         }
     }
 };
 
-// ============ ТЕМНАЯ ТЕМА ============
-window.toggleTheme = function () {
-    document.body.classList.toggle('dark-theme');
-    const icon = document.getElementById('theme-icon');
-    if (icon) {
-        icon.className = document.body.classList.contains('dark-theme') ? 'fas fa-sun' : 'fas fa-moon';
+function openMobileMenu() {
+    const menu = document.getElementById('mobile-menu');
+    const overlay = document.getElementById('mobile-overlay');
+
+    if (menu && overlay) {
+        menu.classList.add('show');
+        overlay.classList.add('show');
+        document.body.style.overflow = 'hidden';
     }
-    localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
+}
+
+window.closeMobileMenu = function () {
+    const menu = document.getElementById('mobile-menu');
+    const overlay = document.getElementById('mobile-overlay');
+
+    if (menu && overlay) {
+        menu.classList.remove('show');
+        overlay.classList.remove('show');
+        document.body.style.overflow = '';
+    }
 };
 
+// Обработчик клика по оверлею
+document.addEventListener('DOMContentLoaded', function() {
+    const overlay = document.getElementById('mobile-overlay');
+    const closeBtn = document.getElementById('close-mobile-menu');
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+
+    if (overlay) {
+        overlay.addEventListener('click', closeMobileMenu);
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeMobileMenu);
+    }
+
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    }
+});
+
+// ============ ТЕМНАЯ ТЕМА ============
+window.toggleTheme = function () {
+    const body = document.body;
+    const themeIcon = document.getElementById('theme-icon');
+    const isDark = body.hasAttribute('data-theme') && body.getAttribute('data-theme') === 'dark';
+
+    if (isDark) {
+        body.removeAttribute('data-theme');
+        if (themeIcon) themeIcon.className = 'fas fa-moon';
+        localStorage.setItem('theme', 'light');
+    } else {
+        body.setAttribute('data-theme', 'dark');
+        if (themeIcon) themeIcon.className = 'fas fa-sun';
+        localStorage.setItem('theme', 'dark');
+    }
+
+    // Анимация переключения темы
+    body.style.transition = 'background-color 0.3s ease, color 0.3s ease';
+    setTimeout(() => {
+        body.style.transition = '';
+    }, 300);
+};
+
+// Загрузка темы при старте
 if (localStorage.getItem('theme') === 'dark') {
-    document.body.classList.add('dark-theme');
+    document.body.setAttribute('data-theme', 'dark');
     const themeIcon = document.getElementById('theme-icon');
     if (themeIcon) themeIcon.className = 'fas fa-sun';
 }
@@ -599,29 +652,52 @@ function updateAdminUI() {
 
 // ============ МОДАЛЬНЫЕ ОКНА ============
 window.openPostModal = function () {
-    const username = document.getElementById('username')?.value.trim();
+    const username = document.getElementById('username')?.value.trim() ||
+                    document.getElementById('mobile-username')?.value.trim();
+
     if (!username) {
-        alert('Введите ваше имя!');
+        showErrorNotification('Введите ваше имя!', 3000);
+        // Фокус на поле имени
+        const usernameInput = document.getElementById('username') || document.getElementById('mobile-username');
+        if (usernameInput) {
+            usernameInput.focus();
+            usernameInput.classList.add('shake');
+            setTimeout(() => usernameInput.classList.remove('shake'), 500);
+        }
         return;
     }
 
     if (userStatus.banned) {
-        alert('❌ Вы забанены и не можете создавать посты!');
+        showErrorNotification('Вы забанены и не можете создавать посты!', 5000);
         return;
     }
 
     if (userStatus.muted) {
-        alert('❌ Вы замучены и не можете создавать посты!');
+        showErrorNotification('Вы замучены и не можете создавать посты!', 5000);
         return;
     }
 
-    document.getElementById('post-modal').classList.add('show');
+    const modal = document.getElementById('post-modal');
+    if (modal) {
+        modal.classList.add('show');
+        // Фокус на заголовке
+        setTimeout(() => {
+            const titleInput = document.getElementById('post-title');
+            if (titleInput) titleInput.focus();
+        }, 300);
+    }
 };
 
 window.closePostModal = function () {
-    document.getElementById('post-modal').classList.remove('show');
-    document.getElementById('post-title').value = '';
-    document.getElementById('post-text').value = '';
+    const modal = document.getElementById('post-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        // Очистка формы
+        const titleInput = document.getElementById('post-title');
+        const textInput = document.getElementById('post-text');
+        if (titleInput) titleInput.value = '';
+        if (textInput) textInput.value = '';
+    }
 };
 
 window.openAdminPanel = function () {
@@ -641,22 +717,37 @@ window.closeAdminPanel = function () {
 // ============ ФУНКЦИИ ЧАТОВ ============
 window.toggleChats = function () {
     if (!fingerprintReady) {
-        alert('⏳ Загрузка... Попробуйте через секунду');
+        showInfoNotification('Загрузка... Попробуйте через секунду', 2000);
         return;
     }
 
-    const username = document.getElementById('username')?.value.trim();
+    const username = document.getElementById('username')?.value.trim() ||
+                    document.getElementById('mobile-username')?.value.trim();
+
     if (!username) {
-        alert('Введите ваше имя!');
+        showErrorNotification('Введите ваше имя!', 3000);
+        const usernameInput = document.getElementById('username') || document.getElementById('mobile-username');
+        if (usernameInput) {
+            usernameInput.focus();
+            usernameInput.classList.add('shake');
+            setTimeout(() => usernameInput.classList.remove('shake'), 500);
+        }
         return;
     }
 
-    document.getElementById('chats-modal').classList.add('show');
-    loadUserChats();
+    const modal = document.getElementById('chats-modal');
+    if (modal) {
+        modal.classList.add('show');
+        loadUserChats();
+    }
 };
 
 window.closeChatsModal = function () {
-    document.getElementById('chats-modal').classList.remove('show');
+    const modal = document.getElementById('chats-modal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+
     currentChatId = null;
 
     // Очищаем все слушатели чатов и fallback интервалы
@@ -2110,13 +2201,25 @@ window.clearSavedUsername = async function () {
     }
 };
 
-// ============ СИСТЕМА УВЕДОМЛЕНИЙ ============
-// Показать/скрыть уведомления
-window.toggleNotifications = function () {
+// ============ HEADER ACTIONS ============
+window.handleCreateBtn = function () {
+    openPostModal();
+};
+
+window.handleNotificationsBtn = function () {
     const notifications = document.getElementById('notifications');
     if (notifications) {
         notifications.classList.toggle('show');
     }
+};
+
+window.handleChatsBtn = function () {
+    toggleChats();
+};
+
+// ============ СИСТЕМА УВЕДОМЛЕНИЙ ============
+window.toggleNotifications = function () {
+    handleNotificationsBtn();
 };
 
 // Прокрутка к началу страницы
@@ -2242,7 +2345,7 @@ function addNotification(type, title, message, duration = 5000) {
 
     notificationsContainer.appendChild(notification);
 
-    // Показываем уведомление
+    // Показываем уведомление с анимацией
     setTimeout(() => {
         notification.classList.add('show');
     }, 100);
@@ -2579,10 +2682,13 @@ async function checkFirebaseConnection() {
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('🚀 Инициализация с поддержкой реального времени...');
+    console.log('🚀 Инициализация DevTalk...');
     console.log('📱 Платформа:', navigator.platform);
     console.log('🌐 User Agent:', navigator.userAgent);
     console.log('🔗 Online:', navigator.onLine);
+
+    // Инициализируем интерфейс
+    initInterface();
 
     // Попытка инициализации с повторными попытками и таймаутом
     let retries = 3;
@@ -2866,6 +2972,192 @@ console.log('✅ DevTalk готов! Все данные обновляются 
 setInterval(() => {
     console.log('🔄 DevTalk работает в реальном времени - все данные синхронизированы');
 }, 60000); // Каждую минуту
+
+// ============ ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ============
+function initInterface() {
+    // Обработчики для header кнопок
+    const createBtn = document.getElementById('create-btn');
+    const notificationsBtn = document.getElementById('notifications-btn');
+    const chatsBtn = document.getElementById('chats-btn');
+    const themeBtn = document.getElementById('theme-btn');
+
+    if (createBtn) createBtn.addEventListener('click', handleCreateBtn);
+    if (notificationsBtn) notificationsBtn.addEventListener('click', handleNotificationsBtn);
+    if (chatsBtn) chatsBtn.addEventListener('click', handleChatsBtn);
+    if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+
+    // Обработчики для мобильного меню
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const closeMobileMenuBtn = document.getElementById('close-mobile-menu');
+    const mobileOverlay = document.getElementById('mobile-overlay');
+
+    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    if (closeMobileMenuBtn) closeMobileMenuBtn.addEventListener('click', closeMobileMenu);
+    if (mobileOverlay) mobileOverlay.addEventListener('click', closeMobileMenu);
+
+    // Обработчик для мобильного имени
+    const mobileUsername = document.getElementById('mobile-username');
+    const mobileConfirmBtn = document.getElementById('mobile-confirm-username');
+
+    if (mobileUsername) {
+        mobileUsername.addEventListener('input', handleMobileUsernameInput);
+        mobileUsername.addEventListener('blur', handleMobileUsernameBlur);
+    }
+
+    if (mobileConfirmBtn) {
+        mobileConfirmBtn.addEventListener('click', confirmMobileUsername);
+    }
+
+    // Обработчик для основного имени
+    const usernameInput = document.getElementById('username');
+    const confirmUsernameBtn = document.getElementById('confirm-username');
+
+    if (usernameInput) {
+        usernameInput.addEventListener('input', handleUsernameInput);
+        usernameInput.addEventListener('blur', handleUsernameBlur);
+    }
+
+    if (confirmUsernameBtn) {
+        confirmUsernameBtn.addEventListener('click', confirmUsername);
+    }
+
+    // Анимация загрузки
+    setTimeout(() => {
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+            }, 300);
+        }
+    }, 1000);
+
+    console.log('✅ Интерфейс инициализирован');
+}
+
+// ============ HEADER ACTIONS ============
+window.handleCreateBtn = function () {
+    openPostModal();
+};
+
+window.handleNotificationsBtn = function () {
+    const notifications = document.getElementById('notifications');
+    if (notifications) {
+        notifications.classList.toggle('show');
+    }
+};
+
+window.handleChatsBtn = function () {
+    toggleChats();
+};
+
+// ============ ОБРАБОТЧИКИ ИМЕНИ ПОЛЬЗОВАТЕЛЯ ============
+function handleMobileUsernameInput() {
+    const input = document.getElementById('mobile-username');
+    const confirmBtn = document.getElementById('mobile-confirm-username');
+
+    if (input && confirmBtn) {
+        const value = input.value.trim();
+        confirmBtn.style.display = value ? 'flex' : 'none';
+    }
+}
+
+function handleUsernameInput() {
+    const input = document.getElementById('username');
+    const confirmBtn = document.getElementById('confirm-username');
+
+    if (input && confirmBtn) {
+        const value = input.value.trim();
+        confirmBtn.style.display = value ? 'flex' : 'none';
+    }
+}
+
+function handleMobileUsernameBlur() {
+    const input = document.getElementById('mobile-username');
+    if (input) {
+        const value = input.value.trim();
+        if (value) {
+            confirmMobileUsername();
+        }
+    }
+}
+
+function handleUsernameBlur() {
+    const input = document.getElementById('username');
+    if (input) {
+        const value = input.value.trim();
+        if (value) {
+            confirmUsername();
+        }
+    }
+}
+
+async function confirmMobileUsername() {
+    const input = document.getElementById('mobile-username');
+    if (!input) return;
+
+    const username = input.value.trim();
+    if (!username) return;
+
+    await confirmUsernameCore(username, input, 'mobile-username');
+}
+
+async function confirmUsername() {
+    const input = document.getElementById('username');
+    if (!input) return;
+
+    const username = input.value.trim();
+    if (!username) return;
+
+    await confirmUsernameCore(username, input, 'username');
+}
+
+async function confirmUsernameCore(username, inputElement, inputId) {
+    // Проверяем, установлено ли уже имя
+    const permanentUsername = await loadPermanentUsername();
+
+    if (!permanentUsername) {
+        // Первое установление имени - показываем предупреждение
+        const confirmed = confirm(`⚠️ ВНИМАНИЕ!\n\nВы устанавливаете ник "${username}".\n\nЭтот ник будет навсегда привязан к вашему устройству и может быть изменен только администратором!\n\nВы уверены?`);
+
+        if (!confirmed) {
+            inputElement.value = '';
+            const confirmBtn = document.getElementById(inputId === 'mobile-username' ? 'mobile-confirm-username' : 'confirm-username');
+            if (confirmBtn) confirmBtn.style.display = 'none';
+            return;
+        }
+
+        // Сохраняем постоянное имя
+        await savePermanentUsername(username);
+        showSuccessNotification(`Ник "${username}" установлен навсегда!`, 5000);
+
+        // Синхронизируем с другим полем ввода
+        const otherInput = document.getElementById(inputId === 'mobile-username' ? 'username' : 'mobile-username');
+        if (otherInput) otherInput.value = username;
+
+    } else {
+        // Имя уже установлено - просто обновляем
+        await savePermanentUsername(username);
+    }
+
+    // Скрываем кнопку подтверждения
+    const confirmBtn = document.getElementById(inputId === 'mobile-username' ? 'mobile-confirm-username' : 'confirm-username');
+    if (confirmBtn) confirmBtn.style.display = 'none';
+
+    // Обновляем интерфейс
+    updateAdminUI();
+    await recordUserActivity();
+
+    // Обновляем онлайн статус
+    if (userStatusOnlineRef) {
+        set(userStatusOnlineRef, {
+            online: true,
+            timestamp: serverTimestamp(),
+            fingerprint: userFingerprint || 'loading',
+            username: username
+        });
+    }
+}
 
 // ============ МОБИЛЬНЫЕ ОПТИМИЗАЦИИ ============
 // Предотвращаем зум при двойном тапе на iOS (полезно и для Android)
