@@ -52,18 +52,9 @@ let userStatus = { banned: false, muted: false };
 let fingerprintReady = false;
 let currentSort = 'new';
 let allPosts = [];
-let filteredPosts = []; // Отфильтрованные посты
 let currentAdminTab = 'dashboard';
 let notifications = [];
 let notificationTimeout = null;
-let currentUser = null; // Текущее имя пользователя
-
-// ============ ФИЛЬТРЫ ============
-let currentFilters = {
-    author: '',
-    timeRange: 'all',
-    minRating: 0
-};
 
 // ============ ЧАТЫ ============
 let currentChatId = null;
@@ -270,12 +261,6 @@ window.closePostModal = function () {
     document.getElementById('post-modal').classList.remove('show');
     document.getElementById('post-title').value = '';
     document.getElementById('post-text').value = '';
-};
-
-window.closeEditPostModal = function () {
-    document.getElementById('edit-post-modal').classList.remove('show');
-    document.getElementById('edit-post-title').value = '';
-    document.getElementById('edit-post-text').value = '';
 };
 
 window.openAdminPanel = function () {
@@ -633,7 +618,6 @@ window.submitPost = async function () {
         timestamp: Date.now(),
         upvotes: 0,
         downvotes: 0,
-        commentCount: 0, // Счетчик комментариев
         fingerprint: userFingerprint,
         userAgent: navigator.userAgent.substring(0, 200)
     };
@@ -645,142 +629,6 @@ window.submitPost = async function () {
         await recordUserActivity();
     } catch (error) {
         console.error('❌ Ошибка создания поста:', error);
-        alert('Ошибка: ' + error.message);
-    }
-};
-
-// ============ РЕДАКТИРОВАНИЕ ПОСТА ============
-let editingPostId = null;
-
-window.editPost = async function (postId) {
-    if (!fingerprintReady) {
-        alert('⏳ Загрузка... Попробуйте через секунду');
-        return;
-    }
-
-    if (userStatus.banned) {
-        alert('❌ Вы забанены и не можете редактировать посты!');
-        return;
-    }
-
-    if (userStatus.muted) {
-        alert('❌ Вы замучены и не можете редактировать посты!');
-        return;
-    }
-
-    try {
-        const postRef = ref(database, `posts/${postId}`);
-        const snapshot = await get(postRef);
-        const postData = snapshot.val();
-
-        if (!postData) {
-            alert('Пост не найден!');
-            return;
-        }
-
-        // Проверяем, что пользователь является автором поста
-        if (postData.author !== currentUser) {
-            alert('❌ Вы можете редактировать только свои посты!');
-            return;
-        }
-
-        // Заполняем форму редактирования
-        document.getElementById('edit-post-title').value = postData.title;
-        document.getElementById('edit-post-text').value = postData.text || '';
-        editingPostId = postId;
-
-        // Показываем модальное окно редактирования
-        document.getElementById('edit-post-modal').classList.add('show');
-    } catch (error) {
-        console.error('❌ Ошибка загрузки поста для редактирования:', error);
-        alert('Ошибка: ' + error.message);
-    }
-};
-
-window.updatePost = async function () {
-    if (!editingPostId) return;
-
-    const title = document.getElementById('edit-post-title')?.value.trim();
-    const text = document.getElementById('edit-post-text')?.value.trim();
-
-    if (!title) {
-        alert('Введите заголовок поста!');
-        return;
-    }
-
-    try {
-        const postRef = ref(database, `posts/${editingPostId}`);
-        const snapshot = await get(postRef);
-        const postData = snapshot.val();
-
-        // Обновляем пост
-        await set(postRef, {
-            ...postData,
-            title: title,
-            text: text || '',
-            edited: true,
-            editedAt: Date.now()
-        });
-
-        console.log('✅ Пост обновлен!');
-        closeEditPostModal();
-        showSuccessNotification('Пост успешно обновлен!', 3000);
-    } catch (error) {
-        console.error('❌ Ошибка обновления поста:', error);
-        alert('Ошибка: ' + error.message);
-    }
-};
-
-// ============ УДАЛЕНИЕ ПОСТА ДЛЯ АВТОРА ============
-window.deletePost = async function (id) {
-    if (!fingerprintReady) {
-        alert('⏳ Загрузка... Попробуйте через секунду');
-        return;
-    }
-
-    try {
-        const postRef = ref(database, `posts/${id}`);
-        const snapshot = await get(postRef);
-        const postData = snapshot.val();
-
-        if (!postData) {
-            alert('Пост не найден!');
-            return;
-        }
-
-        // Проверяем права на удаление
-        const isAdminUser = isAdmin();
-        const isAuthor = currentUser && postData.author === currentUser;
-
-        if (!isAdminUser && !isAuthor) {
-            alert('❌ У вас нет прав на удаление этого поста!');
-            return;
-        }
-
-        if (!confirm('Вы уверены, что хотите удалить этот пост? Это действие нельзя отменить.')) {
-            return;
-        }
-
-        await remove(postRef);
-        console.log('🗑️ Пост удален');
-
-        // Также удаляем все комментарии к этому посту
-        const commentsSnapshot = await get(commentsRef);
-        if (commentsSnapshot.exists()) {
-            const deletePromises = [];
-            commentsSnapshot.forEach(child => {
-                const comment = child.val();
-                if (comment.postId === id) {
-                    deletePromises.push(remove(ref(database, `comments/${child.key}`)));
-                }
-            });
-            await Promise.all(deletePromises);
-            console.log('🗑️ Комментарии к посту удалены');
-        }
-
-        showSuccessNotification('Пост и все комментарии к нему удалены!', 3000);
-    } catch (error) {
-        console.error('❌ Ошибка удаления поста:', error);
         alert('Ошибка: ' + error.message);
     }
 };
@@ -854,211 +702,35 @@ window.sortPosts = function (type) {
     sortAndDisplayPosts();
 };
 
-// Улучшенная функция сортировки и отображения постов с учетом фильтров
 function sortAndDisplayPosts() {
-    // Начинаем с отфильтрованных постов или всех постов если фильтры не применены
-    let postsToSort = filteredPosts.length > 0 ? [...filteredPosts] : [...allPosts];
+    let sortedPosts = [...allPosts];
 
     if (currentSort === 'new') {
-        postsToSort.sort((a, b) => b.data.timestamp - a.data.timestamp);
+        sortedPosts.sort((a, b) => b.data.timestamp - a.data.timestamp);
     } else if (currentSort === 'hot') {
-        postsToSort.sort((a, b) => {
+        sortedPosts.sort((a, b) => {
             const scoreA = (a.data.upvotes || 0) - (a.data.downvotes || 0);
             const scoreB = (b.data.upvotes || 0) - (b.data.downvotes || 0);
             const timeA = Date.now() - a.data.timestamp;
             const timeB = Date.now() - b.data.timestamp;
-            // Улучшенный алгоритм "горячих" постов с учетом времени
-            const hotScoreA = scoreA / Math.pow(timeA + 1, 1.5);
-            const hotScoreB = scoreB / Math.pow(timeB + 1, 1.5);
-            return hotScoreB - hotScoreA;
+            return (scoreB / Math.log(timeB + 2)) - (scoreA / Math.log(timeA + 2));
         });
     } else if (currentSort === 'top') {
-        postsToSort.sort((a, b) => {
+        sortedPosts.sort((a, b) => {
             const scoreA = (a.data.upvotes || 0) - (a.data.downvotes || 0);
             const scoreB = (b.data.upvotes || 0) - (b.data.downvotes || 0);
-            // Если рейтинги равны, сортируем по времени создания
-            if (scoreB === scoreA) {
-                return b.data.timestamp - a.data.timestamp;
-            }
             return scoreB - scoreA;
-        });
-    } else if (currentSort === 'comments') {
-        // Сортировка по количеству комментариев
-        postsToSort.sort((a, b) => {
-            const commentsA = a.data.commentCount || 0;
-            const commentsB = b.data.commentCount || 0;
-            // Если количество комментариев равно, сортируем по времени
-            if (commentsB === commentsA) {
-                return b.data.timestamp - a.data.timestamp;
-            }
-            return commentsB - commentsA;
         });
     }
 
     const postsContainer = document.getElementById('posts-container');
     postsContainer.innerHTML = '';
 
-    // Показываем индикатор активных фильтров если они применены
-    if (filteredPosts.length > 0 || hasActiveFilters()) {
-        const filterIndicator = createFilterIndicator();
-        postsContainer.appendChild(filterIndicator);
-    }
-
-    if (postsToSort.length === 0) {
-        postsContainer.innerHTML += '<div class="no-posts">Посты не найдены. Попробуйте изменить фильтры.</div>';
-        return;
-    }
-
-    postsToSort.forEach(post => {
+    sortedPosts.forEach(post => {
         const postCard = createPostCard(post.id, post.data);
         postsContainer.appendChild(postCard);
     });
 }
-
-// Создание индикатора активных фильтров
-function createFilterIndicator() {
-    const div = document.createElement('div');
-    div.className = 'filter-indicator';
-
-    const activeFilters = [];
-    if (currentFilters.author) activeFilters.push(`Автор: ${currentFilters.author}`);
-    if (currentFilters.timeRange !== 'all') activeFilters.push(`Период: ${getTimeRangeLabel(currentFilters.timeRange)}`);
-    if (currentFilters.minRating > 0) activeFilters.push(`Рейтинг от: ${currentFilters.minRating}`);
-
-    div.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--accent); color: white; padding: 12px 20px; border-radius: var(--radius-lg); margin-bottom: 20px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <i class="fas fa-filter"></i>
-                <span>Активные фильтры: ${activeFilters.join(', ')}</span>
-            </div>
-            <button onclick="clearFilters()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: var(--radius-md); cursor: pointer;">
-                <i class="fas fa-times"></i> Очистить
-            </button>
-        </div>
-    `;
-
-    return div;
-}
-
-// Проверка наличия активных фильтров
-function hasActiveFilters() {
-    return currentFilters.author || currentFilters.timeRange !== 'all' || currentFilters.minRating > 0;
-}
-
-// Получение метки для периода времени
-function getTimeRangeLabel(range) {
-    const labels = {
-        today: 'Сегодня',
-        week: 'Неделя',
-        month: 'Месяц'
-    };
-    return labels[range] || range;
-}
-
-// Получение количества комментариев для поста
-function getCommentCountForPost(postId) {
-    // Эта функция будет заполняться при загрузке комментариев
-    return parseInt(document.getElementById(`comment-count-${postId}`)?.textContent) || 0;
-}
-
-// ============ ФУНКЦИИ ФИЛЬТРАЦИИ ПОСТОВ ============
-// Применение фильтров
-window.applyFilters = function () {
-    const authorFilter = document.getElementById('author-filter')?.value.trim().toLowerCase() || '';
-    const timeFilter = document.getElementById('time-filter')?.value || 'all';
-    const ratingFilter = parseInt(document.getElementById('rating-filter')?.value) || 0;
-
-    // Обновляем текущие фильтры
-    currentFilters = {
-        author: authorFilter,
-        timeRange: timeFilter,
-        minRating: ratingFilter
-    };
-
-    // Применяем фильтры к постам
-    filteredPosts = allPosts.filter(post => {
-        const postData = post.data;
-
-        // Фильтр по автору
-        if (authorFilter && !postData.author.toLowerCase().includes(authorFilter)) {
-            return false;
-        }
-
-        // Фильтр по периоду времени
-        if (timeFilter !== 'all') {
-            const postTime = new Date(postData.timestamp);
-            const now = new Date();
-            let timeLimit;
-
-            switch (timeFilter) {
-                case 'today':
-                    timeLimit = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    break;
-                case 'week':
-                    timeLimit = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    break;
-                case 'month':
-                    timeLimit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-            }
-
-            if (postTime < timeLimit) {
-                return false;
-            }
-        }
-
-        // Фильтр по минимальному рейтингу
-        if (ratingFilter > 0) {
-            const score = (postData.upvotes || 0) - (postData.downvotes || 0);
-            if (score < ratingFilter) {
-                return false;
-            }
-        }
-
-        return true;
-    });
-
-    console.log(`🔍 Применены фильтры. Найдено постов: ${filteredPosts.length} из ${allPosts.length}`);
-
-    // Показываем уведомление о результатах фильтрации
-    if (filteredPosts.length === 0) {
-        showInfoNotification('Посты по заданным фильтрам не найдены');
-    } else if (filteredPosts.length < allPosts.length) {
-        showSuccessNotification(`Найдено ${filteredPosts.length} постов из ${allPosts.length}`);
-    }
-
-    // Обновляем отображение постов
-    sortAndDisplayPosts();
-};
-
-// Очистка всех фильтров
-window.clearFilters = function () {
-    // Очищаем поля фильтров
-    const authorFilter = document.getElementById('author-filter');
-    const timeFilter = document.getElementById('time-filter');
-    const ratingFilter = document.getElementById('rating-filter');
-
-    if (authorFilter) authorFilter.value = '';
-    if (timeFilter) timeFilter.value = 'all';
-    if (ratingFilter) ratingFilter.value = '';
-
-    // Сбрасываем текущие фильтры
-    currentFilters = {
-        author: '',
-        timeRange: 'all',
-        minRating: 0
-    };
-
-    // Показываем все посты
-    filteredPosts = [];
-
-    console.log('🔄 Фильтры очищены');
-
-    // Обновляем отображение постов
-    sortAndDisplayPosts();
-
-    showInfoNotification('Фильтры очищены');
-};
 
 // ============ СОЗДАНИЕ КАРТОЧКИ ПОСТА ============
 function createPostCard(id, data) {
@@ -1110,14 +782,6 @@ function createPostCard(id, data) {
                         <i class="fas fa-trash"></i> Удалить
                     </button>
                 ` : ''}
-                ${!admin && currentUser && data.author === currentUser ? `
-                    <button class="action-btn edit" onclick="editPost('${id}')">
-                        <i class="fas fa-edit"></i> Редактировать
-                    </button>
-                    <button class="action-btn delete" onclick="deletePost('${id}')">
-                        <i class="fas fa-trash"></i> Удалить
-                    </button>
-                ` : ''}
             </div>
 
             <!-- Комментарии -->
@@ -1141,193 +805,60 @@ function createPostCard(id, data) {
     return div;
 }
 
-// ============ УЛУЧШЕННАЯ СИСТЕМА ГОЛОСОВАНИЯ С КЕШИРОВАНИЕМ ============
+// ============ ГОЛОСОВАНИЕ ============
 window.vote = async function (postId, voteType) {
     if (userStatus.banned) {
         alert('❌ Вы забанены и не можете голосовать!');
         return;
     }
 
-    if (!fingerprintReady) {
-        alert('⏳ Загрузка... Попробуйте через секунду');
-        return;
-    }
-
     const userVotes = JSON.parse(localStorage.getItem('userVotes') || '{}');
     const currentVote = userVotes[postId] || 0;
-
-    // Оптимистическое обновление UI
-    const voteBtn = document.querySelector(`[onclick="vote('${postId}', 1)"]`)?.parentElement?.parentElement;
-    if (voteBtn) {
-        const upvoteBtn = voteBtn.querySelector('.vote-btn:nth-child(1)');
-        const downvoteBtn = voteBtn.querySelector('.vote-btn:nth-child(3)');
-        const voteCount = voteBtn.querySelector('.vote-count');
-
-        // Сохраняем предыдущие значения для отката при ошибке
-        const previousUpvoted = upvoteBtn?.classList.contains('upvoted');
-        const previousDownvoted = downvoteBtn?.classList.contains('downvoted');
-        const previousCount = voteCount?.textContent;
-
-        // Оптимистическое обновление
-        if (currentVote === voteType) {
-            // Убираем голос
-            upvoteBtn?.classList.remove('upvoted');
-            downvoteBtn?.classList.remove('downvoted');
-            userVotes[postId] = 0;
-        } else {
-            // Добавляем/меняем голос
-            if (voteType === 1) {
-                upvoteBtn?.classList.add('upvoted');
-                downvoteBtn?.classList.remove('downvoted');
-            } else {
-                downvoteBtn?.classList.add('downvoted');
-                upvoteBtn?.classList.remove('upvoted');
-            }
-            userVotes[postId] = voteType;
-        }
-
-        // Обновляем локальный счетчик
-        updateVoteCountLocally(postId, voteType, currentVote);
-    }
 
     try {
         const postRef = ref(database, `posts/${postId}`);
         const snapshot = await get(postRef);
         const postData = snapshot.val();
-
-        if (!postData) {
-            throw new Error('Пост не найден');
-        }
 
         let upvotes = postData.upvotes || 0;
         let downvotes = postData.downvotes || 0;
 
-        // Откатываем изменения в базе данных
         if (currentVote === 1) upvotes--;
         if (currentVote === -1) downvotes--;
 
-        // Применяем новые изменения
         if (currentVote === voteType) {
-            // Убираем голос - уже откатили выше
+            userVotes[postId] = 0;
         } else {
             if (voteType === 1) upvotes++;
             if (voteType === -1) downvotes++;
+            userVotes[postId] = voteType;
         }
 
-        // Сохраняем голоса локально с timestamp для синхронизации
-        const voteData = {
-            vote: userVotes[postId],
-            timestamp: Date.now(),
-            fingerprint: userFingerprint
-        };
         localStorage.setItem('userVotes', JSON.stringify(userVotes));
-
-        // Сохраняем детальную информацию о голосе
-        const voteDetails = JSON.parse(localStorage.getItem('voteDetails') || '{}');
-        voteDetails[postId] = voteData;
-        localStorage.setItem('voteDetails', JSON.stringify(voteDetails));
 
         await set(postRef, {
             ...postData,
             upvotes: upvotes,
-            downvotes: downvotes,
-            lastVote: Date.now()
+            downvotes: downvotes
         });
-
-        console.log('✅ Голос учтен:', { postId, voteType, upvotes, downvotes });
     } catch (error) {
-        console.error('❌ Ошибка голосования:', error);
-
-        // Откатываем оптимистическое обновление при ошибке
-        if (voteBtn) {
-            const upvoteBtn = voteBtn.querySelector('.vote-btn:nth-child(1)');
-            const downvoteBtn = voteBtn.querySelector('.vote-btn:nth-child(3)');
-            const voteCount = voteBtn.querySelector('.vote-count');
-
-            upvoteBtn?.classList.toggle('upvoted', previousUpvoted);
-            downvoteBtn?.classList.toggle('downvoted', previousDownvoted);
-            if (voteCount && previousCount) {
-                voteCount.textContent = previousCount;
-            }
-        }
-
-        // Восстанавливаем предыдущий голос в localStorage
-        if (currentVote === voteType) {
-            userVotes[postId] = 0;
-        } else {
-            userVotes[postId] = currentVote;
-        }
-        localStorage.setItem('userVotes', JSON.stringify(userVotes));
-
-        showErrorNotification('Ошибка при голосовании. Попробуйте снова.', 3000);
+        console.error('Ошибка голосования:', error);
     }
 };
 
-// Локальное обновление счетчика голосов
-function updateVoteCountLocally(postId, newVote, oldVote) {
-    const voteElements = document.querySelectorAll(`[onclick*="vote('${postId}'"]`);
-    voteElements.forEach(element => {
-        const voteSection = element.closest('.vote-section');
-        if (voteSection) {
-            const voteCount = voteSection.querySelector('.vote-count');
-            if (voteCount) {
-                const currentCount = parseInt(voteCount.textContent.replace(/[^\d-]/g, '')) || 0;
-
-                let newCount = currentCount;
-                if (oldVote === 1) newCount++;
-                if (oldVote === -1) newCount--;
-                if (newVote === 1) newCount--;
-                if (newVote === -1) newCount++;
-
-                voteCount.textContent = formatNumber(newCount);
-            }
-        }
-    });
-}
-
-// Синхронизация голосов при загрузке
-function syncVotesOnLoad() {
-    const voteDetails = JSON.parse(localStorage.getItem('voteDetails') || '{}');
-    const currentTime = Date.now();
-    const syncPromises = [];
-
-    // Проверяем голоса, которые не синхронизировались более 5 минут
-    Object.keys(voteDetails).forEach(postId => {
-        const voteData = voteDetails[postId];
-        if (currentTime - voteData.timestamp > 5 * 60 * 1000) { // 5 минут
-            // Пересинхронизируем старые голоса
-            syncPromises.push(syncSingleVote(postId, voteData));
-        }
-    });
-
-    if (syncPromises.length > 0) {
-        console.log(`🔄 Синхронизация ${syncPromises.length} голосов...`);
-        Promise.all(syncPromises).then(() => {
-            console.log('✅ Голоса синхронизированы');
-        }).catch(error => {
-            console.error('❌ Ошибка синхронизации голосов:', error);
-        });
+// ============ УДАЛЕНИЕ ПОСТА ============
+window.deletePost = function (id) {
+    if (!isAdmin()) {
+        alert('❌ У вас нет прав!');
+        return;
     }
-}
 
-// Синхронизация одного голоса
-async function syncSingleVote(postId, voteData) {
-    try {
-        const postRef = ref(database, `posts/${postId}`);
-        const snapshot = await get(postRef);
-        const postData = snapshot.val();
-
-        if (postData) {
-            await set(postRef, {
-                ...postData,
-                lastVote: Date.now()
-            });
-        }
-    } catch (error) {
-        console.error(`Ошибка синхронизации голоса для поста ${postId}:`, error);
+    if (confirm('Удалить этот пост?')) {
+        remove(ref(database, 'posts/' + id))
+            .then(() => console.log('🗑️ Пост удален'))
+            .catch((error) => alert('Ошибка: ' + error.message));
     }
-}
-
+};
 
 // ============ АДМИН ПАНЕЛЬ - НАВИГАЦИЯ ============
 window.switchAdminTab = function (tabName) {
@@ -2485,9 +2016,6 @@ window.submitComment = async function (postId) {
     try {
         await push(commentsRef, newComment);
 
-        // Обновляем счетчик комментариев в посте
-        await updatePostCommentCount(postId);
-
         // Очищаем поле ввода
         const commentInput = document.getElementById(`comment-text-${postId}`);
         if (commentInput) {
@@ -2502,147 +2030,46 @@ window.submitComment = async function (postId) {
     }
 };
 
-// Улучшенное голосование за комментарий
+// Голосование за комментарий
 window.voteComment = async function (commentId, voteType) {
     if (userStatus.banned) {
         alert('❌ Вы забанены и не можете голосовать!');
         return;
     }
 
-    if (!fingerprintReady) {
-        alert('⏳ Загрузка... Попробуйте через секунду');
-        return;
-    }
-
     const userCommentVotes = JSON.parse(localStorage.getItem('userCommentVotes') || '{}');
     const currentVote = userCommentVotes[commentId] || 0;
-
-    // Оптимистическое обновление UI для комментариев
-    const commentVoteBtn = document.querySelector(`[onclick="voteComment('${commentId}', 1)"]`)?.parentElement?.parentElement;
-    if (commentVoteBtn) {
-        const upvoteBtn = commentVoteBtn.querySelector('.comment-vote-btn:nth-child(1)');
-        const downvoteBtn = commentVoteBtn.querySelector('.comment-vote-btn:nth-child(3)');
-        const voteCount = commentVoteBtn.querySelector('.comment-vote-count');
-
-        // Сохраняем предыдущие значения
-        const previousUpvoted = upvoteBtn?.classList.contains('upvoted');
-        const previousDownvoted = downvoteBtn?.classList.contains('downvoted');
-        const previousCount = voteCount?.textContent;
-
-        // Оптимистическое обновление
-        if (currentVote === voteType) {
-            upvoteBtn?.classList.remove('upvoted');
-            downvoteBtn?.classList.remove('downvoted');
-            userCommentVotes[commentId] = 0;
-        } else {
-            if (voteType === 1) {
-                upvoteBtn?.classList.add('upvoted');
-                downvoteBtn?.classList.remove('downvoted');
-            } else {
-                downvoteBtn?.classList.add('downvoted');
-                upvoteBtn?.classList.remove('upvoted');
-            }
-            userCommentVotes[commentId] = voteType;
-        }
-
-        // Обновляем локальный счетчик для комментариев
-        updateCommentVoteCountLocally(commentId, voteType, currentVote);
-    }
 
     try {
         const commentRef = ref(database, `comments/${commentId}`);
         const snapshot = await get(commentRef);
         const commentData = snapshot.val();
 
-        if (!commentData) {
-            throw new Error('Комментарий не найден');
-        }
-
         let upvotes = commentData.upvotes || 0;
         let downvotes = commentData.downvotes || 0;
 
-        // Откатываем изменения в базе данных
         if (currentVote === 1) upvotes--;
         if (currentVote === -1) downvotes--;
 
-        // Применяем новые изменения
         if (currentVote === voteType) {
-            // Убираем голос - уже откатили выше
+            userCommentVotes[commentId] = 0;
         } else {
             if (voteType === 1) upvotes++;
             if (voteType === -1) downvotes++;
+            userCommentVotes[commentId] = voteType;
         }
 
-        // Сохраняем голоса локально с timestamp
-        const voteData = {
-            vote: userCommentVotes[commentId],
-            timestamp: Date.now(),
-            fingerprint: userFingerprint
-        };
         localStorage.setItem('userCommentVotes', JSON.stringify(userCommentVotes));
-
-        // Сохраняем детальную информацию о голосе за комментарий
-        const commentVoteDetails = JSON.parse(localStorage.getItem('commentVoteDetails') || '{}');
-        commentVoteDetails[commentId] = voteData;
-        localStorage.setItem('commentVoteDetails', JSON.stringify(commentVoteDetails));
 
         await set(commentRef, {
             ...commentData,
             upvotes: upvotes,
-            downvotes: downvotes,
-            lastVote: Date.now()
+            downvotes: downvotes
         });
-
-        console.log('✅ Голос за комментарий учтен:', { commentId, voteType, upvotes, downvotes });
     } catch (error) {
-        console.error('❌ Ошибка голосования за комментарий:', error);
-
-        // Откатываем оптимистическое обновление при ошибке
-        if (commentVoteBtn) {
-            const upvoteBtn = commentVoteBtn.querySelector('.comment-vote-btn:nth-child(1)');
-            const downvoteBtn = commentVoteBtn.querySelector('.comment-vote-btn:nth-child(3)');
-            const voteCount = commentVoteBtn.querySelector('.comment-vote-count');
-
-            upvoteBtn?.classList.toggle('upvoted', previousUpvoted);
-            downvoteBtn?.classList.toggle('downvoted', previousDownvoted);
-            if (voteCount && previousCount) {
-                voteCount.textContent = previousCount;
-            }
-        }
-
-        // Восстанавливаем предыдущий голос в localStorage
-        if (currentVote === voteType) {
-            userCommentVotes[commentId] = 0;
-        } else {
-            userCommentVotes[commentId] = currentVote;
-        }
-        localStorage.setItem('userCommentVotes', JSON.stringify(userCommentVotes));
-
-        showErrorNotification('Ошибка при голосовании за комментарий. Попробуйте снова.', 3000);
+        console.error('Ошибка голосования за комментарий:', error);
     }
 };
-
-// Локальное обновление счетчика голосов для комментариев
-function updateCommentVoteCountLocally(commentId, newVote, oldVote) {
-    const voteElements = document.querySelectorAll(`[onclick*="voteComment('${commentId}'"]`);
-    voteElements.forEach(element => {
-        const voteSection = element.closest('.comment-vote-section');
-        if (voteSection) {
-            const voteCount = voteSection.querySelector('.comment-vote-count');
-            if (voteCount) {
-                const currentCount = parseInt(voteCount.textContent.replace(/[^\d-]/g, '')) || 0;
-
-                let newCount = currentCount;
-                if (oldVote === 1) newCount++;
-                if (oldVote === -1) newCount--;
-                if (newVote === 1) newCount--;
-                if (newVote === -1) newCount++;
-
-                voteCount.textContent = formatNumber(newCount);
-            }
-        }
-    });
-}
 
 // Удаление комментария
 window.deleteComment = function (commentId, postId) {
@@ -2668,39 +2095,6 @@ function updateCommentCount(postId, count) {
         countElement.textContent = count;
     }
 };
-
-// Обновление счетчика комментариев в посте в базе данных
-async function updatePostCommentCount(postId) {
-    try {
-        const postRef = ref(database, `posts/${postId}`);
-        const snapshot = await get(postRef);
-        const postData = snapshot.val();
-
-        if (postData) {
-            // Получаем актуальное количество комментариев
-            const commentsSnapshot = await get(query(commentsRef, orderByChild('postId')));
-            let commentCount = 0;
-
-            if (commentsSnapshot.exists()) {
-                commentsSnapshot.forEach(child => {
-                    if (child.val().postId === postId) {
-                        commentCount++;
-                    }
-                });
-            }
-
-            // Обновляем счетчик в посте
-            await set(postRef, {
-                ...postData,
-                commentCount: commentCount
-            });
-
-            console.log(`✅ Счетчик комментариев обновлен для поста ${postId}: ${commentCount}`);
-        }
-    } catch (error) {
-        console.error('❌ Ошибка обновления счетчика комментариев:', error);
-    }
-}
 
 // ============ ПРОВЕРКА ПОДКЛЮЧЕНИЯ К FIREBASE ============
 async function checkFirebaseConnection() {
@@ -2751,9 +2145,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 await initFingerprint();
                 await initOnlineStatus();
-
-                // Синхронизируем голоса при запуске
-                syncVotesOnLoad();
                 initialized = true;
                 console.log('✅ Инициализация успешна - все данные обновляются в реальном времени');
                 resolve();
@@ -2905,7 +2296,6 @@ if (usernameInput) {
     const savedUsername = loadUsername();
     if (savedUsername) {
         usernameInput.value = savedUsername;
-        currentUser = savedUsername; // Инициализируем текущего пользователя
         updateAdminUI();
         await recordUserActivity();
 
@@ -2925,9 +2315,6 @@ if (usernameInput) {
         if (username) {
             saveUsername(username);
         }
-
-        // Обновляем текущего пользователя
-        currentUser = username;
 
         updateAdminUI();
         recordUserActivity();
