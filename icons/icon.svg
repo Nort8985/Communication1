@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0079d3;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00d4aa;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Фон -->
+  <rect width="512" height="512" rx="128" fill="url(#gradient)"/>
+
+  <!-- Круг для иконки сообщений -->
+  <circle cx="256" cy="200" r="80" fill="white" opacity="0.9"/>
+
+  <!-- Символ сообщений (три точки в круге) -->
+  <circle cx="240" cy="190" r="8" fill="#0079d3"/>
+  <circle cx="256" cy="190" r="8" fill="#0079d3"/>
+  <circle cx="272" cy="190" r="8" fill="#0079d3"/>
+
+  <circle cx="240" cy="210" r="8" fill="#0079d3"/>
+  <circle cx="256" cy="210" r="8" fill="#0079d3"/>
+  <circle cx="272" cy="210" r="8" fill="#0079d3"/>
+
+  <!-- Текст "D" внизу -->
+  <text x="256" y="320" font-family="Arial, sans-serif" font-size="120" font-weight="bold" text-anchor="middle" fill="white">D</text>
+
+  <!-- Маленький текст "evTalk" -->
+  <text x="256" y="360" font-family="Arial, sans-serif" font-size="36" font-weight="normal" text-anchor="middle" fill="white" opacity="0.8">evTalk</text>
+</svg>

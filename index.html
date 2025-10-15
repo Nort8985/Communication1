@@ -118,6 +118,9 @@
                     <button class="sort-btn" onclick="sortPosts('top'); toggleMobileMenu();">
                         <i class="fas fa-arrow-up"></i> Топ
                     </button>
+                    <button class="sort-btn" onclick="sortPosts('comments'); toggleMobileMenu();">
+                        <i class="fas fa-comments"></i> Комментарии
+                    </button>
                 </div>
             </div>
 
@@ -184,6 +187,38 @@
                     <button class="sort-btn" onclick="sortPosts('top')">
                         <i class="fas fa-arrow-up"></i> Топ
                     </button>
+                    <button class="sort-btn" onclick="sortPosts('comments')">
+                        <i class="fas fa-comments"></i> Комментарии
+                    </button>
+                </div>
+            </div>
+
+            <!-- Фильтры -->
+            <div class="sidebar-card">
+                <h3><i class="fas fa-filter"></i> Фильтры</h3>
+                <div class="filter-controls">
+                    <div class="filter-group">
+                        <label class="filter-label">Поиск по автору:</label>
+                        <input type="text" id="author-filter" placeholder="Имя автора..." class="filter-input" onkeyup="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Период времени:</label>
+                        <select id="time-filter" class="filter-select" onchange="applyFilters()">
+                            <option value="all">Все время</option>
+                            <option value="today">Сегодня</option>
+                            <option value="week">Неделя</option>
+                            <option value="month">Месяц</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Минимальный рейтинг:</label>
+                        <input type="number" id="rating-filter" placeholder="0" class="filter-input" onchange="applyFilters()" min="0">
+                    </div>
+                    <div class="filter-actions">
+                        <button class="filter-btn clear" onclick="clearFilters()">
+                            <i class="fas fa-times"></i> Очистить фильтры
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -256,6 +291,28 @@
                     <button class="cancel-btn" onclick="closePostModal()">Отмена</button>
                     <button class="submit-btn" onclick="submitPost()">
                         <i class="fas fa-paper-plane"></i> Опубликовать
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования поста -->
+    <div id="edit-post-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Редактировать пост</h2>
+                <button class="close-btn" onclick="closeEditPostModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="edit-post-title" placeholder="Заголовок поста" maxlength="100" class="post-title-input">
+                <textarea id="edit-post-text" placeholder="Текст поста (необязательно)" rows="6" class="post-text-input"></textarea>
+                <div class="modal-actions">
+                    <button class="cancel-btn" onclick="closeEditPostModal()">Отмена</button>
+                    <button class="submit-btn" onclick="updatePost()">
+                        <i class="fas fa-save"></i> Сохранить изменения
                     </button>
                 </div>
             </div>

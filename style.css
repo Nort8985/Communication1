@@ -340,6 +340,77 @@ body.dark-theme {
     transform: translateY(-2px);
 }
 
+/* Фильтры */
+.filter-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.filter-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-input,
+.filter-select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: var(--transition);
+    outline: none;
+}
+
+.filter-input:focus,
+.filter-select:focus {
+    border-color: var(--primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 2px rgba(0, 121, 211, 0.1);
+}
+
+.filter-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+}
+
+.filter-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.filter-btn.clear {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.filter-btn.clear:hover {
+    background: var(--error);
+    color: white;
+    border-color: var(--error);
+}
+
 /* Статистика */
 .info-card .stat-item {
     display: flex;
@@ -602,6 +673,10 @@ body.dark-theme {
 
 .action-btn.delete {
     color: #e74c3c;
+}
+
+.action-btn.edit {
+    color: #3498db;
 }
 
 .action-btn.ban {
